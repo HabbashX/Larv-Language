@@ -9,8 +9,11 @@ Larv is a lightweight, expression-oriented language with a clean, C-style syntax
 
 you can read the docs also
 [Docs](Docs.md)
+
 ---
 
+### Download the Larv Runtime Environment LRE
+[larv-isntaller.exe](runtime/larv-installer.exe)
 ## Table of Contents
 
 - [Features](#features)
