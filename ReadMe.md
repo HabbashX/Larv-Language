@@ -715,3 +715,7 @@ src/main/java/com/habbashx/larv/
         ├── NativeSystemLibrary.java
         └── loader/NativeLibraryLoader.java
 ```
+
+
+# MIT LICENSE
+[LICENSE](LICENSE.md)
