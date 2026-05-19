@@ -6,7 +6,7 @@
 
     <groupId>com.habbashx</groupId>
     <artifactId>larv-language</artifactId>
-    <version>1.0-beta</version>
+    <version>1.0.2-beta</version>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>

@@ -1,496 +1,375 @@
 # Larv Language Reference
 
-**Version:** 1.0.0-beta
-
-This document is the complete technical reference for the Larv programming language. For a quick introduction, see the [README](./README.md).
+This document is the complete language reference for **Larv 1.0.0-beta**. It covers every syntactic construct, every built-in, and every standard library function with detailed descriptions and examples.
 
 ---
 
 ## Table of Contents
 
 1. [Lexical Structure](#1-lexical-structure)
-2. [Types](#2-types)
-3. [Expressions](#3-expressions)
-4. [Statements](#4-statements)
-5. [Functions](#5-functions)
-6. [Classes](#6-classes)
-7. [Arrays](#7-arrays)
-8. [Control Flow](#8-control-flow)
-9. [Module System](#9-module-system)
-10. [Java Interop (FFI)](#10-java-interop-ffi)
-11. [Built-in Functions](#11-built-in-functions)
-12. [Standard Library — math](#12-standard-library--math)
-13. [Standard Library — string](#13-standard-library--string)
-14. [Standard Library — list](#14-standard-library--list)
-15. [Standard Library — map](#15-standard-library--map)
-16. [Standard Library — io](#16-standard-library--io)
-17. [Standard Library — http](#17-standard-library--http)
-18. [Standard Library — system](#18-standard-library--system)
-19. [Error Handling](#19-error-handling)
-20. [Grammar Summary](#20-grammar-summary)
+2. [Types and Values](#2-types-and-values)
+3. [Variables and Constants](#3-variables-and-constants)
+4. [Expressions](#4-expressions)
+5. [Statements](#5-statements)
+6. [Functions](#6-functions)
+7. [Classes and Objects](#7-classes-and-objects)
+8. [Arrays](#8-arrays)
+9. [Modules](#9-modules)
+10. [Imports](#10-imports)
+11. [Error Handling](#11-error-handling)
+12. [Enums](#12-enums)
+13. [Java Interop (FFI)](#13-java-interop-ffi)
+14. [Built-in Functions](#14-built-in-functions)
+15. [Standard Library](#15-standard-library)
+    - [math](#151-math)
+    - [string](#152-string)
+    - [io](#153-io)
+    - [list](#154-list)
+    - [map](#155-map)
+    - [http](#156-http)
+    - [regex](#157-regex)
+    - [date](#158-date)
+    - [encode](#159-encode)
+    - [convert](#1510-convert)
+    - [system](#1511-system)
+    - [properties](#1512-properties)
+16. [Error Types](#16-error-types)
+17. [Execution Pipeline](#17-execution-pipeline)
 
 ---
 
 ## 1. Lexical Structure
 
-### Source encoding
+### 1.1 Comments
 
-Source files are read as UTF-8 text. The conventional extension is `.larv`.
-
-### Comments
+Only single-line comments are supported, introduced by `//`.
 
 ```larv
-// This is a comment. Everything from // to end-of-line is ignored.
+// This entire line is a comment
+var x = 10  // This is an inline comment
 ```
 
-There are no block comments.
+### 1.2 Keywords
 
-### Whitespace
-
-Spaces, tabs, and carriage returns are ignored. Newlines advance the line counter (used in error messages) but are not significant tokens.
-
-### Identifiers
-
-Identifiers start with a letter or underscore and continue with letters, digits, or underscores. They are case-sensitive.
+The following identifiers are reserved and cannot be used as variable or function names:
 
 ```
-identifier → [A-Za-z_][A-Za-z0-9_]*
+var      const    if       else     while    for      in
+func     return   break    continue class    new      this
+include  from     involve  import   module   as       nil
+true     false    try      catch    finally  throw    switch
+case     default  enum
 ```
 
-### Keywords
+### 1.3 Identifiers
 
-The following words are reserved and cannot be used as identifiers:
-
-```
-var   const   print   if     else    while   for    func
-return  break   continue  class   new    this    nil
-true    false   include   from    involve  import
-```
-
-### Number literals
+An identifier begins with a Unicode letter or underscore (`_`) and may be followed by any combination of Unicode letters, digits, and underscores. Identifiers are case-sensitive.
 
 ```
-number → [0-9]+ ('.' [0-9]+)?
+myVar    _private    camelCase    SCREAMING_SNAKE    x1
 ```
 
-All numbers are internally 64-bit floating-point (`double`). Both `42` and `3.14` are valid.
+### 1.4 Numbers
 
-### String literals
-
-Strings are enclosed in double quotes:
+All numeric literals are IEEE 754 64-bit floating-point values at runtime. Both integer and decimal forms are supported.
 
 ```
-string → '"' character* '"'
+42       0      -7      3.14     100.0
 ```
 
-Supported escape sequences:
+### 1.5 Strings
 
-| Escape | Character     |
-|--------|---------------|
-| `\"`   | Double quote  |
-| `\\`   | Backslash     |
-| `\n`   | Newline       |
-| `\t`   | Tab           |
-| `\r`   | Carriage return|
+Regular strings are delimited by double quotes `"..."` and support the following escape sequences:
 
-A `"` that appears inside balanced parentheses within a string is treated as a literal character, not the closing delimiter. This allows `involve` constructor args to be written naturally:
+| Sequence | Meaning |
+|---|---|
+| `\"` | Double quote |
+| `\\` | Backslash |
+| `\n` | Newline |
+| `\t` | Tab |
+| `\r` | Carriage return |
+
+### 1.6 Raw Strings
+
+Triple-quoted strings `"""..."""` are verbatim — no escape processing is performed. A newline immediately after the opening `"""` is stripped. They are ideal for multi-line text and embedded queries.
 
 ```larv
-include fw from "java.io.FileWriter" involve { "example.txt" }
+const query = """
+    SELECT *
+    FROM users
+    WHERE active = 1
+"""
 ```
 
-### Operators and punctuation
+### 1.7 Operators (by precedence, low to high)
 
-```
-+  -  *  /  ++  --
-=  ==  !=  <  >  <=  >=
-(  )  {  }  [  ]  ,  ;  :  .
-```
-
-`!` alone (not followed by `=`) is a lexer error. Use `!= ` for inequality.
+| Precedence | Operators | Associativity |
+|---|---|---|
+| Lowest | `?` (ternary) | Right |
+| Logical OR | `\|\|` | Left |
+| Logical AND | `&&` | Left |
+| Equality | `==` `!=` | Left |
+| Relational | `<` `>` `<=` `>=` | Left |
+| Additive | `+` `-` | Left |
+| Multiplicative | `*` `/` | Left |
+| Unary | `!` `-` | Right |
+| Postfix | `++` `--` | — |
+| Highest | `.` `[` `(` | Left |
 
 ---
 
-## 2. Types
+## 2. Types and Values
 
-Larv is dynamically typed. Every value at runtime is one of:
+Larv is dynamically typed. Every value has one of the following runtime types:
 
-| Type    | Underlying Java type     | Literal / source               |
-|---------|--------------------------|--------------------------------|
-| Number  | `double`                 | `42`, `3.14`, arithmetic result|
-| String  | `java.lang.String`       | `"hello"`                      |
-| Boolean | `boolean`                | `true`, `false`                |
-| Array   | `java.util.List<Object>` | `[1, 2, 3]`                    |
-| Map     | `java.util.LinkedHashMap`| created by `mapNew()`          |
-| Object  | `LarvObject`             | `new ClassName(...)`           |
-| Nil     | `null`                   | `nil`                          |
+| Type | Description | `typeOf()` result |
+|---|---|---|
+| **Number** | 64-bit double | `"Number"` |
+| **String** | UTF-16 string | `"String"` |
+| **Boolean** | `true` or `false` | `"Boolean"` |
+| **Nil** | Absence of value | `"Nil"` |
+| **Array** | Ordered mutable list | `"Array"` |
+| **Object** | Instance of a user class | `"Object"` |
+| **Function** | Callable (user-defined or native) | `"Function"` |
 
 ### Truthiness
 
-The following values are falsy; everything else is truthy:
+The following values are **falsy**; everything else is truthy:
 
 - `false`
 - `nil`
-
-Numbers, strings (including `""`), arrays, maps, and objects are all truthy.
-
----
-
-## 3. Expressions
-
-Expressions are evaluated using a Pratt (top-down operator precedence) parser.
-
-### Precedence table (lowest → highest)
-
-| Precedence | Operators             |
-|------------|-----------------------|
-| 1          | `=` (assignment)      |
-| 2          | `==`, `!=`            |
-| 3          | `<`, `>`, `<=`, `>=`  |
-| 4          | `+`, `-`              |
-| 5          | `*`, `/`              |
-| 6          | Unary `-`             |
-| 7          | `.` (member access), `()` (call), `[]` (index) |
-
-### Literal expressions
-
-```larv
-42          // number
-3.14        // number
-"hello"     // string
-true        // boolean
-false       // boolean
-nil         // nil value
-[1, 2, 3]  // array literal
-```
-
-### Variable expressions
-
-```larv
-x           // read variable x
-```
-
-### Assignment expressions
-
-```larv
-x = 10            // assign to variable
-obj.field = val   // set field on object
-arr[i] = val      // set array element
-```
-
-### Binary expressions
-
-```larv
-a + b    a - b    a * b    a / b
-a == b   a != b   a < b    a > b   a <= b   a >= b
-"foo" + "bar"   // string concatenation
-```
-
-### Unary expression
-
-```larv
--x        // numeric negation
-```
-
-### Call expression
-
-```larv
-func(a, b, c)        // call function
-obj.method(a, b)     // call method on object or Java bound class
-```
-
-### Member access
-
-```larv
-obj.field     // read a field or call a method
-obj.method()  // method call
-```
-
-### Index expression
-
-```larv
-arr[0]          // array element
-arr[i + 1]      // computed index
-```
-
-### `this` expression
-
-Only valid inside a class method. Refers to the current instance.
-
-```larv
-this.name = "value"
-print this.x
-```
-
-### `new` expression
-
-Creates an instance of a user-defined class:
-
-```larv
-new ClassName(arg1, arg2)
-```
-
-### Grouping
-
-```larv
-(a + b) * c
-```
-
-### Class reference
-
-Inside method bodies, referring to the class name provides access to static-style members (if any).
+- The number `0.0`
+- The empty string `""`
 
 ---
 
-## 4. Statements
+## 3. Variables and Constants
 
-Every statement is terminated by the end of its syntactic structure (no mandatory `;` for most forms). Semicolons are optional and silently consumed where they appear.
-
-### Variable declaration — `var`
+### `var` — Mutable Variable
 
 ```larv
-var name = expression
-var x               // declared with nil value if no initializer
+var x = 10
+var name = "Larv"
+var items = [1, 2, 3]
+var empty              // nil by default
 ```
 
-### Constant declaration — `const`
+The value of a `var` variable may be reassigned at any time:
 
 ```larv
-const PI = 3.14159
+x = 20
+name = "updated"
 ```
 
-`const` requires an initializer. Reassigning a constant is a runtime error.
-
-### Print statement
+### `const` — Immutable Constant
 
 ```larv
-print expression
+const MAX = 100
+const GREETING = "Hello"
 ```
 
-Equivalent to `print(expression)`.
+`const` requires an initialiser. Reassigning a constant is a runtime error.
 
-### Expression statement
+### Scope
 
-Any expression used as a standalone statement:
-
-```larv
-add(1, 2)
-i++
-i--
-obj.method()
-```
-
-### Increment / decrement
-
-```larv
-i++    // equivalent to i = i + 1
-i--    // equivalent to i = i - 1
-```
-
-These are statement forms only; they cannot appear inside a larger expression.
-
-### Assignment statement
-
-```larv
-x = newValue
-obj.field = newValue
-arr[i] = newValue
-```
+Variables are lexically scoped. A variable declared inside a block (between `{` and `}`) is only visible within that block and any nested blocks.
 
 ---
 
-## 5. Functions
+## 4. Expressions
 
-### Declaration
+### 4.1 Literals
 
 ```larv
-func name(param1, param2, ...) {
-    // body
-    return value
-}
+42          // Number
+"hello"     // String
+true        // Boolean
+nil         // Nil
+[1, 2, 3]  // Array literal
 ```
 
-- Parameters are positional; there are no default values or named parameters.
-- `return` exits the function and optionally returns a value. A function that falls off the end returns `nil`.
-- Functions are values; they can be stored in variables and passed as arguments.
-
-### Calling
+### 4.2 Variable Access
 
 ```larv
-name(arg1, arg2)
+var answer = 42
+print(answer)
 ```
 
-### Recursion
+### 4.3 Arithmetic Expressions
 
 ```larv
-func fib(n) {
-    if n <= 1 { return n }
-    return fib(n - 1) + fib(n - 2)
-}
+var sum  = 1 + 2       // 3
+var diff = 10 - 4      // 6
+var prod = 3 * 7       // 21
+var quot = 9 / 4       // 2.25
 ```
 
-### First-class functions
+String concatenation also uses `+`:
 
 ```larv
-func square(x) { return x * x }
-var fn = square
-print fn(5)    // 25
+var msg = "Hello, " + "World!"
 ```
 
-### Closures
-
-Functions close over their enclosing scope:
+### 4.4 Comparison Expressions
 
 ```larv
-func makeCounter() {
-    var count = 0
-    func increment() {
-        count = count + 1
-        return count
-    }
-    return increment
-}
-var c = makeCounter()
-print c()   // 1
-print c()   // 2
+10 == 10     // true
+10 != 5      // true
+3 < 7        // true
+7 > 3        // true
+5 <= 5       // true
+6 >= 7       // false
 ```
 
----
-
-## 6. Classes
-
-### Declaration
+### 4.5 Logical Expressions
 
 ```larv
-class ClassName {
-    func methodName(params) {
-        // body
-    }
-}
+true && false   // false
+true || false   // true
+!true           // false
 ```
 
-A class body may only contain function declarations. Field declarations are implicit — fields are set by assigning to `this.fieldName` inside any method.
+### 4.6 Ternary Expression
 
-### Construction
-
-```larv
-var obj = new ClassName(arg1, arg2)
+```
+condition ? thenValue, elseValue
 ```
 
-Larv does not have a special constructor syntax. By convention, define an `init` method and call it explicitly, or pass initialization args to any method you name for setup. The `new` expression calls the runtime to create an empty `LarvObject` instance and looks for a method matching the class name's structure.
-
-**Pattern: use an `init` method**
+Note the comma `,` separating the two branches, not a colon.
 
 ```larv
-class Point {
-    func init(x, y) {
-        this.x = x
-        this.y = y
-    }
-    func toString() {
-        return "(" + this.x + ", " + this.y + ")"
-    }
-}
+var label = x > 0 ? "positive", "non-positive"
+```
+
+### 4.7 Assignment Expression
+
+```larv
+x = 99
+```
+
+### 4.8 Compound Assignment
+
+```larv
+x += 5    // x = x + 5
+x -= 2    // x = x - 2
+x *= 3    // x = x * 3
+x /= 4    // x = x / 4
+```
+
+### 4.9 Increment / Decrement
+
+Postfix only:
+
+```larv
+x++   // x = x + 1
+x--   // x = x - 1
+```
+
+### 4.10 Array Index Expression
+
+```larv
+var arr = [10, 20, 30]
+print(arr[0])    // 10
+arr[1] = 99      // index assignment
+```
+
+### 4.11 Field Access and Method Calls
+
+```larv
+obj.fieldName
+obj.method(arg1, arg2)
+```
+
+### 4.12 Function Calls
+
+```larv
+greet("World")
+math.sqrt(16)
+```
+
+### 4.13 `new` Expression
+
+```larv
 var p = new Point(3, 4)
-p.init(3, 4)
-print p.toString()   // (3, 4)
 ```
 
-### Fields
+Constructs a new instance of the named class and calls `init` if defined.
 
-Fields are created by assignment on `this`. There is no field declaration syntax.
+### 4.14 `this` Expression
+
+Inside a class method, `this` refers to the current instance.
 
 ```larv
-this.name = "value"
-print this.name
+class Box {
+    func init(w, h) {
+        this.width  = w
+        this.height = h
+    }
+    func area() {
+        return this.width * this.height
+    }
+}
 ```
-
-### Methods
-
-Methods are functions declared inside a class body. They are called with dot syntax on an instance.
-
-```larv
-obj.methodName(arg1, arg2)
-```
-
-Inside a method, `this` is automatically bound to the receiver.
-
-### Inheritance
-
-Not supported in the current version.
 
 ---
 
-## 7. Arrays
+## 5. Statements
 
-### Literal syntax
+### 5.1 Variable Declaration
 
 ```larv
-var arr = [1, 2, 3]
-var empty = []
-var nested = [[1, 2], [3, 4]]
+var x = 10
+var y          // nil
+const Z = 100
 ```
 
-### Index access
+### 5.2 Assignment Statement
 
 ```larv
-arr[0]        // read (zero-based)
-arr[i]        // computed index
-```
-
-### Index assignment
-
-```larv
+x = 42
+obj.field = "value"
 arr[0] = 99
 ```
 
-### `len` built-in
+### 5.3 `print` Statement
+
+The dedicated `print` keyword prints directly (shorthand for `print()`):
 
 ```larv
-len(arr)      // returns number of elements
+print "Hello, World!"
 ```
 
-### Dot-method API
+The function form `print(value)` is equivalent:
 
-These methods are called on any array value with dot syntax:
+```larv
+print("Hello, World!")
+```
 
-| Method                | Returns   | Description                              |
-|-----------------------|-----------|------------------------------------------|
-| `.push(val)`          | nil       | Append val to end                        |
-| `.pop()`              | any       | Remove and return last element           |
-| `.peek()`             | any       | Read last element without removing       |
-| `.first()`            | any       | Read first element                       |
-| `.last()`             | any       | Read last element                        |
-| `.contains(val)`      | boolean   | True if val is in array                  |
-| `.indexOf(val)`       | number    | Index of first occurrence, -1 if missing |
-| `.isEmpty()`          | boolean   | True if length is 0                      |
-| `.clear()`            | nil       | Remove all elements                      |
-| `.reverse()`          | nil       | Reverse in place                         |
-| `.remove(i)`          | any       | Remove and return element at index i     |
-| `.slice(from, to)`    | array     | New sub-array [from, to)                 |
-| `.join(sep)`          | string    | Join all elements with separator         |
+### 5.4 Expression Statement
 
----
+Any expression can be used as a statement (typically a function call):
 
-## 8. Control Flow
+```larv
+doSomething()
+arr.push(42)
+x++
+```
 
-### `if` / `else`
+### 5.5 `if` / `else`
 
 ```larv
 if condition {
     // then branch
-}
-
-if condition {
-    // then
+} else if otherCondition {
+    // else-if branch
 } else {
-    // else
+    // else branch
 }
 ```
 
-The condition does not require parentheses. Braces are required around both branches.
+Braces are mandatory. `else if` chains are unlimited.
 
-### `while`
+### 5.6 `while`
 
 ```larv
 while condition {
@@ -498,7 +377,7 @@ while condition {
 }
 ```
 
-### `for` (C-style)
+### 5.7 `for` (Traditional)
 
 ```larv
 for init; condition; increment {
@@ -506,187 +385,546 @@ for init; condition; increment {
 }
 ```
 
-`init` can be a variable assignment (`i = 0`) or an expression statement.  
-`increment` can be `i++`, `i--`, or an expression statement.
-
 ```larv
 for i = 0; i < 10; i++ {
-    print i
+    print(i)
 }
 ```
 
-### `for` (foreach)
+### 5.8 `for … in` (Foreach)
 
 Iterates over every element of an array:
 
 ```larv
-for element : array {
-    // body — element is bound to each value
+for element in collection {
+    // body
 }
 ```
 
+Works with array literals, variables, and `range()`:
+
 ```larv
-var fruits = ["apple", "banana", "cherry"]
-for fruit : fruits {
-    print fruit
+for x in [1, 2, 3] {
+    print(x)
+}
+
+for i in range(5) {
+    print(i)   // 0 1 2 3 4
 }
 ```
 
-### `break`
+### 5.9 `break` and `continue`
 
-Exits the innermost loop immediately.
+`break` exits the innermost loop immediately. `continue` skips the remainder of the current iteration.
 
 ```larv
-while true {
-    if done { break }
+for i in range(10) {
+    if i == 5 { break }
+    if i % 2 == 0 { continue }
+    print(i)    // 1 3
 }
 ```
 
-### `continue`
-
-Skips the rest of the current loop iteration and advances to the next.
+### 5.10 `return`
 
 ```larv
-for i = 0; i < 10; i++ {
-    if i == 5 { continue }
-    print i
+func add(a, b) {
+    return a + b
+}
+```
+
+`return` without a value returns `nil`. Using `return` outside a function is a runtime error.
+
+### 5.11 `switch`
+
+```larv
+switch subject {
+    case value1, value2 : {
+        // fires if subject == value1 OR subject == value2
+    }
+    case value3 : {
+        // fires if subject == value3
+    }
+    default : {
+        // fires if no case matched
+    }
+}
+```
+
+`subject` is evaluated once. Each `case` compares with `==`. Multiple comma-separated values on one `case` are OR conditions. `default` is optional.
+
+---
+
+## 6. Functions
+
+### 6.1 Declaration
+
+```larv
+func name(param1, param2, ...) {
+    // body
+}
+```
+
+Parameters are positional and untyped. Functions have no overloading; later declarations shadow earlier ones.
+
+### 6.2 Return Values
+
+```larv
+func square(n) {
+    return n * n
+}
+
+var result = square(5)    // 25
+```
+
+A function without an explicit `return` returns `nil`.
+
+### 6.3 First-Class Functions
+
+Functions are values. They can be stored in variables, passed to other functions, and returned from functions.
+
+```larv
+func double(x) { return x * 2 }
+
+var fn = double
+print(fn(10))   // 20
+
+func apply(f, x) { return f(x) }
+print(apply(double, 7))   // 14
+```
+
+### 6.4 Recursion
+
+```larv
+func fib(n) {
+    if n <= 1 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+
+print(fib(10))   // 55
+```
+
+### 6.5 Closures
+
+Functions close over the variables in their enclosing scope:
+
+```larv
+func makeCounter() {
+    var count = 0
+    func increment() {
+        count++
+        return count
+    }
+    return increment
+}
+
+var counter = makeCounter()
+print(counter())   // 1
+print(counter())   // 2
+```
+
+---
+
+## 7. Classes and Objects
+
+### 7.1 Declaration
+
+```larv
+class ClassName {
+    func init(param1, param2) {
+        this.field1 = param1
+        this.field2 = param2
+    }
+
+    func methodName() {
+        return this.field1
+    }
+}
+```
+
+### 7.2 Instantiation
+
+```larv
+var obj = new ClassName(arg1, arg2)
+```
+
+`new ClassName(args)` creates a new object and immediately calls `init(args)` if it exists.
+
+### 7.3 Field Access and Assignment
+
+```larv
+print(obj.field1)
+obj.field1 = "new value"
+```
+
+Fields do not need to be declared upfront; they are created when first assigned via `this.field`.
+
+### 7.4 Method Calls
+
+```larv
+var result = obj.methodName()
+```
+
+### 7.5 Example — Stack
+
+```larv
+class Stack {
+    func init() {
+        this.data = []
+    }
+    func push(value) {
+        this.data.push(value)
+    }
+    func pop() {
+        return this.data.pop()
+    }
+    func peek() {
+        return this.data.peek()
+    }
+    func size() {
+        return len(this.data)
+    }
+    func isEmpty() {
+        return len(this.data) == 0
+    }
+}
+
+var s = new Stack()
+s.push(1)
+s.push(2)
+print(s.pop())    // 2
+print(s.size())   // 1
+```
+
+---
+
+## 8. Arrays
+
+Arrays are ordered, heterogeneous, mutable sequences indexed from zero.
+
+### 8.1 Literals
+
+```larv
+var empty = []
+var nums  = [1, 2, 3, 4, 5]
+var mixed = [42, "hello", true, nil]
+```
+
+### 8.2 Index Access
+
+```larv
+var arr = [10, 20, 30]
+print(arr[0])    // 10
+print(arr[2])    // 30
+arr[1] = 99      // mutation
+```
+
+Accessing an out-of-bounds index is a runtime error.
+
+### 8.3 Built-in Array Dot Methods
+
+These methods are available on every array value without any import.
+
+| Method | Arguments | Returns | Description |
+|---|---|---|---|
+| `push(value)` | value | nil | Append to end |
+| `pop()` | — | last value | Remove and return last element |
+| `peek()` | — | last value | Return last element without removing |
+| `first()` | — | first value | Return first element |
+| `last()` | — | last value | Return last element |
+| `contains(value)` | value | boolean | True if element is present |
+| `indexOf(value)` | value | number | First index of value, or -1 |
+| `isEmpty()` | — | boolean | True if length is 0 |
+| `clear()` | — | nil | Remove all elements |
+| `reverse()` | — | nil | Reverse in place |
+| `remove(index)` | index | removed value | Remove element at index |
+| `slice(from, to)` | from, to | new array | Sub-array from index `from` (inclusive) to `to` (exclusive) |
+| `join(sep?)` | separator | string | Join elements with separator (default `""`) |
+
+```larv
+var arr = [3, 1, 4, 1, 5]
+arr.push(9)
+print(arr.pop())            // 9
+print(arr.contains(4))      // true
+print(arr.indexOf(1))       // 1
+arr.reverse()
+print(arr.join(", "))       // 5 1 4 1 3
+```
+
+### 8.4 `len(array)`
+
+The built-in `len()` function returns the number of elements:
+
+```larv
+print(len([1, 2, 3]))   // 3
+```
+
+### 8.5 `range(start?, end)`
+
+Generates a numeric list suitable for `for … in` iteration:
+
+```larv
+range(5)       // [0, 1, 2, 3, 4]
+range(2, 7)    // [2, 3, 4, 5, 6]
+```
+
+---
+
+## 9. Modules
+
+Modules are named namespaces that group declarations.
+
+### 9.1 Declaration
+
+```larv
+module ModuleName {
+    const VALUE = 42
+
+    func helper(x) {
+        return x * 2
+    }
+}
+```
+
+### 9.2 Member Access
+
+```larv
+print(ModuleName.VALUE)
+print(ModuleName.helper(5))
+```
+
+### 9.3 Example
+
+```larv
+module Config {
+    const HOST    = "localhost"
+    const PORT    = 8080
+    const VERSION = "1.0"
+
+    func baseUrl() {
+        return "http://" + HOST + ":" + PORT
+    }
+}
+
+print(Config.baseUrl())   // http://localhost:8080
+```
+
+---
+
+## 10. Imports
+
+### 10.1 Standard Library Import
+
+```larv
+import "math"
+import "string"
+import "io"
+```
+
+The library name must be one of the known standard library identifiers. After import, all functions from that library are available in the current scope.
+
+### 10.2 File Import
+
+```larv
+import "relative.dotted.path"
+```
+
+The dotted path is resolved relative to the project root (the directory containing the entry file). Dots are converted to path separators. The `.larv` extension is appended automatically.
+
+```larv
+import "utils.math_helpers"   // loads ./utils/math_helpers.larv
+import "models.user"          // loads ./models/user.larv
+```
+
+All top-level declarations from the imported file become available in the current scope.
+
+---
+
+## 11. Error Handling
+
+### 11.1 `try / catch / finally`
+
+```larv
+try {
+    // code that may throw
+} catch (variableName) {
+    // handle the thrown value; variableName holds it
+} finally {
+    // always runs, whether or not an error occurred
+}
+```
+
+`catch` and `finally` are both optional, but at least one must be present.
+
+```larv
+try {
+    var data = readFile("config.json")
+    print(data)
+} catch (err) {
+    printErr("Failed to read config: " + err)
+} finally {
+    print("Done")
+}
+```
+
+### 11.2 `throw`
+
+Any value can be thrown:
+
+```larv
+throw "something went wrong"
+throw 404
+throw new ErrorInfo("Not found")
+```
+
+The thrown value is bound to the catch variable:
+
+```larv
+try {
+    throw "oops"
+} catch (e) {
+    print(e)   // oops
+}
+```
+
+### 11.3 Error Propagation
+
+If an exception is not caught in the current function, it propagates up the call stack. If it reaches the top level uncaught, the interpreter prints it in red and exits with code 1.
+
+---
+
+## 12. Enums
+
+### 12.1 Declaration
+
+```larv
+enum Status { PENDING, ACTIVE, INACTIVE, DELETED }
+```
+
+### 12.2 Access
+
+```larv
+var s = Status.ACTIVE
+print(s)   // ACTIVE
+```
+
+Enum variants are strings at runtime — their names as written.
+
+### 12.3 Using Enums in Switch
+
+```larv
+enum Color { RED, GREEN, BLUE }
+
+var c = Color.GREEN
+
+switch c {
+    case Color.RED : {
+        print("Stop")
+    }
+    case Color.GREEN : {
+        print("Go")
+    }
+    case Color.BLUE : {
+        print("Info")
+    }
 }
 ```
 
 ---
 
-## 9. Module System
+## 13. Java Interop (FFI)
 
-### Standard library import
+Larv can bind and call any Java class available on the JVM classpath.
+
+### 13.1 Static Binding
+
+Use `include alias from "fully.qualified.ClassName"` to bind a class under an alias. Static methods on the class become callable on the alias.
 
 ```larv
-import math
-import string
-import list
-import map
-import io
-import http
-import system
+include JMath from "java.lang.Math"
+
+print(JMath.sqrt(25))          // 5.0
+print(JMath.max(10, 20))       // 20.0
+print(JMath.PI)                // 3.141592653589793
 ```
 
-After an import, all functions from that library are registered in the global scope and can be called by name.
+### 13.2 Instance Binding (`involve`)
 
-### File import
+To instantiate a Java class (calling a constructor), add an `involve { }` block with constructor arguments as strings:
 
 ```larv
-import "utils.larv"
-import "lib/helpers.larv"
+include sb from "java.lang.StringBuilder" involve {
+    "Hello"
+}
+sb.append(" World")
+print(sb.toString())   // Hello World
 ```
 
-The path is relative to the directory of the importing file. The imported file is parsed and executed in a shared environment, so any `func` or `var` defined at the top level becomes available to the importer.
+### 13.3 Static Field Resolution
 
-Import paths use forward slashes and include the `.larv` extension.
-
----
-
-## 10. Java Interop (FFI)
-
-The FFI system lets Larv scripts bind and call any Java class on the JVM classpath.
-
-### Static binding
+Inside `involve { }`, a string of the form `"ClassName.fieldName"` is automatically resolved to the corresponding Java static field:
 
 ```larv
-include Alias from "fully.qualified.ClassName"
-```
-
-The alias becomes a global name. Calling `Alias.method(args)` invokes the corresponding public method on the class. If the class has a no-argument constructor, an instance is automatically created; otherwise only static methods are available.
-
-```larv
-include Math from "java.lang.Math"
-print Math.sqrt(25)      // 5.0
-print Math.floor(3.9)    // 3.0
-```
-
-### Instance binding with `involve`
-
-```larv
-include Alias from "fully.qualified.ClassName" involve { "arg1", "arg2" }
-```
-
-`involve { ... }` passes constructor arguments. After binding, the alias holds a live Java instance and both instance and static methods are callable.
-
-```larv
-include sb from "java.lang.StringBuilder"
-sb.append("Hello, ")
-sb.append("World!")
-print sb.toString()    // Hello, World!
-```
-
-```larv
-include fw from "java.io.FileWriter" involve { "out.txt" }
-fw.write("data line\n")
-fw.flush()
-fw.close()
-```
-
-### Argument resolution in `involve`
-
-Inside `involve { ... }` all args are quoted strings. They are resolved as follows:
-
-- `"hello"` → passed as a `String` (or coerced to match the constructor signature)
-- `"42"` → coerced to `int`, `long`, or `double` as needed
-- `"java.lang.System.in"` → resolved to the public static field `System.in`
-- `"some.ClassName.field"` → resolved to any public static field
-- `"some.ClassName(arg)"` → constructs that class with the given literal args
-
-```larv
-// Wrap System.in in a Scanner
-include scanner from "java.util.Scanner" involve { "java.lang.System.in" }
+include scanner from "java.util.Scanner" involve {
+    "java.lang.System.in"
+}
 var line = scanner.nextLine()
-print line
 ```
 
-### Calling methods
+### 13.4 Nested Construction
 
-All public methods of the bound class are accessible:
+Arguments of the form `"some.Class(arg1, arg2)"` inside `involve { }` construct a nested Java object:
 
 ```larv
-include list from "java.util.ArrayList"
-list.add("first")
-list.add("second")
-print list.size()     // 2
-print list.get(0)     // first
+include pw from "java.io.PrintWriter" involve {
+    "java.io.FileWriter(output.txt)"
+}
+pw.println("Written from Larv")
+pw.flush()
 ```
 
-### Field access
+### 13.5 Type Coercion
 
-Public fields on a bound instance can be read with dot syntax:
-
-```larv
-include point from "java.awt.Point" involve { "3", "4" }
-print point.x   // 3
-print point.y   // 4
-```
+Larv automatically coerces values when calling Java methods: numbers become the closest Java numeric type (`int`, `long`, `double`) and strings become `java.lang.String`. Boolean values become `boolean`.
 
 ---
 
-## 11. Built-in Functions
+## 14. Built-in Functions
 
-Always available without any import:
+These functions are always available without any import.
 
 ### `print(value)`
 
-Converts `value` to a string and prints it to standard output followed by a newline.
+Prints the string representation of `value` to `stdout` followed by a newline. Whole-number doubles are printed without a decimal point (`5.0` prints as `5`).
 
 ```larv
-print("hello")
-print(42)
-print(true)
-print(nil)    // prints "nil"
+print("Hello")    // Hello
+print(42)         // 42
+print(true)       // true
+print(nil)        // nil
+print([1, 2])     // [1, 2]
+```
+
+### `printErr(value)`
+
+Prints `value` to `stderr` in red ANSI color. Useful for error output inside `catch` blocks.
+
+```larv
+try {
+    throw "bad state"
+} catch (e) {
+    printErr("Error: " + e)
+}
 ```
 
 ### `input()`
 
-Reads a line from standard input and returns it as a string (without the trailing newline).
+Reads one line from `stdin` and returns it as a string. Returns `nil` on EOF.
 
 ```larv
+print("Enter your name: ")
 var name = input()
-print "You typed: " + name
+print("Hello, " + name)
 ```
 
 ### `len(array)`
@@ -694,532 +932,573 @@ print "You typed: " + name
 Returns the number of elements in an array as a number.
 
 ```larv
-var arr = [1, 2, 3]
-print len(arr)    // 3
+print(len([1, 2, 3]))   // 3
+print(len([]))           // 0
 ```
 
-Passing a non-array raises a runtime error.
+### `range(end)` / `range(start, end)`
 
----
-
-## 12. Standard Library — math
+Returns a `List` of numbers from `start` (inclusive, default `0`) to `end` (exclusive).
 
 ```larv
-import math
+range(5)        // [0, 1, 2, 3, 4]
+range(2, 6)     // [2, 3, 4, 5]
+range(0, 0)     // []
 ```
 
-### Constants
-
-| Function  | Value            |
-|-----------|------------------|
-| `pi()`    | 3.141592653589793 |
-| `e()`     | 2.718281828459045 |
-
-### Basic operations
+Primarily used with `for … in`:
 
 ```larv
-sqrt(16)        // 4.0
-pow(2, 10)      // 1024.0
-abs(-5)         // 5.0
-floor(3.7)      // 3.0
-ceil(3.2)       // 4.0
-round(3.5)      // 4.0
-max(3, 7)       // 7.0
-min(3, 7)       // 3.0
-toInt(3.9)      // 3.0  (truncate toward zero)
-```
-
-### Logarithms and exponents
-
-```larv
-log(2.71828)    // ≈ 1.0 (natural log)
-log10(100)      // 2.0
-```
-
-### Trigonometry (angles in radians)
-
-```larv
-sin(pi() / 2)   // 1.0
-cos(0)          // 1.0
-tan(pi() / 4)   // ≈ 1.0
-asin(1)         // ≈ 1.5707 (π/2)
-acos(1)         // 0.0
-atan(1)         // ≈ 0.7854 (π/4)
-atan2(1, 1)     // ≈ 0.7854
-toRadians(180)  // ≈ 3.14159
-toDegrees(pi()) // 180.0
-```
-
-### Random numbers
-
-```larv
-random()            // float in [0, 1)
-randomInt(1, 6)     // integer in [1, 6] inclusive
-```
-
-### Utility
-
-```larv
-clamp(15, 0, 10)    // 10 (clamped to max)
-clamp(-5, 0, 10)    // 0  (clamped to min)
-sign(-3)            // -1.0
-sign(0)             // 0.0
-sign(7)             // 1.0
-isNaN(0 / 0)        // true (note: Larv may propagate NaN from Java)
-isInfinite(1 / 0)   // true (same caveat)
-```
-
----
-
-## 13. Standard Library — string
-
-```larv
-import string
-```
-
-### Length and case
-
-```larv
-strLen("hello")       // 5
-strUpper("hello")     // "HELLO"
-strLower("WORLD")     // "world"
-```
-
-### Whitespace
-
-```larv
-strTrim("  hi  ")       // "hi"
-strTrimLeft("  hi  ")   // "hi  "
-strTrimRight("  hi  ")  // "  hi"
-strIsEmpty("  ")        // true
-strIsEmpty("x")         // false
-```
-
-### Searching
-
-```larv
-strContains("hello world", "world")    // true
-strStartsWith("hello", "hel")          // true
-strEndsWith("hello", "llo")            // true
-strIndexOf("hello", "l")               // 2  (first occurrence)
-```
-
-### Slicing and editing
-
-```larv
-strSlice("hello", 1, 4)              // "ell"  ([from, to))
-strCharAt("hello", 0)                // "h"
-strReplace("aabbaa", "aa", "XX")     // "XXbbaa"  (first only)
-strReplaceAll("aabbaa", "a", "X")    // "XXbbXX"
-```
-
-### Splitting and joining
-
-```larv
-strSplit("a,b,c", ",")    // ["a", "b", "c"]
-strJoin(["a", "b"], "-")  // "a-b"
-```
-
-### Padding and repeating
-
-```larv
-strRepeat("ab", 3)              // "ababab"
-strPadLeft("42", 5, "0")        // "00042"
-strPadRight("hi", 5, ".")       // "hi..."
-```
-
-### Conversion
-
-```larv
-strToNumber("3.14")      // 3.14
-strFromNumber(3.14)      // "3.14"
-strFromNumber(42)        // "42"  (no trailing .0 for whole numbers)
-```
-
-### Characters
-
-```larv
-strReverse("hello")      // "olleh"
-strChars("abc")          // ["a", "b", "c"]
-```
-
----
-
-## 14. Standard Library — list
-
-```larv
-import list
-```
-
-The `list` library provides an alternative functional API for arrays. Arrays created with `listNew()` and array literals (`[...]`) are the same underlying type and are interchangeable.
-
-### Creation
-
-```larv
-var l = listNew()           // empty list
-var filled = listFill(0, 5) // [0, 0, 0, 0, 0]
-```
-
-### Adding and removing
-
-```larv
-listAdd(l, "value")            // append
-listAddAt(l, 0, "front")       // insert at index
-listRemove(l, 0)               // remove at index
-listClear(l)                   // remove all
-var last = listPop(l)          // remove and return last
-```
-
-### Reading
-
-```larv
-listGet(l, 0)                  // element at index 0
-listFirst(l)                   // first element
-listLast(l)                    // last element
-listSize(l)                    // element count
-listIsEmpty(l)                 // true if size == 0
-```
-
-### Searching
-
-```larv
-listContains(l, "x")           // true / false
-listIndexOf(l, "x")            // index or -1
-```
-
-### Transformations (return new lists)
-
-```larv
-listSlice(l, 1, 3)             // sub-list [from, to)
-listReverse(l)                 // reversed copy
-listSort(l)                    // sorted copy (numbers or strings)
-listConcat(a, b)               // new list = a + b
-listFlat(nested)               // flatten one level
-listUnique(l)                  // deduplicated copy
-```
-
-### In-place
-
-```larv
-listSet(l, 0, "new")           // overwrite element at index
-listShuffle(l)                 // shuffle in place
-```
-
----
-
-## 15. Standard Library — map
-
-```larv
-import map
-```
-
-Maps store key-value pairs. Keys must be strings. Insertion order is preserved.
-
-### Creation
-
-```larv
-var m = mapNew()
-```
-
-### Setting and getting
-
-```larv
-mapSet(m, "name", "Larv")
-mapSet(m, "version", 1)
-print mapGet(m, "name")       // "Larv"
-print mapGet(m, "missing")    // nil
-```
-
-### Querying
-
-```larv
-mapHas(m, "name")             // true
-mapSize(m)                    // 2
-mapIsEmpty(m)                 // false
-mapContainsValue(m, "Larv")   // true
-```
-
-### Removal
-
-```larv
-mapRemove(m, "name")
-mapClear(m)
-```
-
-### Iteration
-
-```larv
-var keys   = mapKeys(m)        // array of strings
-var values = mapValues(m)      // array of values
-
-var pairs  = mapToList(m)      // array of [key, value] arrays
-for pair : pairs {
-    print pair[0] + " => " + pair[1]
+for i in range(3) {
+    print(i)   // 0  1  2
 }
 ```
 
-### Merging
+---
+
+## 15. Standard Library
+
+### 15.1 `math`
 
 ```larv
-var merged = mapMerge(a, b)    // b's keys overwrite a's on conflict
+import "math"
+```
+
+#### Mathematical Functions
+
+| Function | Signature | Returns | Description |
+|---|---|---|---|
+| `sqrt` | `sqrt(n)` | number | Square root of n |
+| `pow` | `pow(base, exp)` | number | base raised to exp |
+| `abs` | `abs(n)` | number | Absolute value |
+| `floor` | `floor(n)` | number | Round toward negative infinity |
+| `ceil` | `ceil(n)` | number | Round toward positive infinity |
+| `round` | `round(n)` | number | Round to nearest integer |
+| `max` | `max(a, b)` | number | Larger of a and b |
+| `min` | `min(a, b)` | number | Smaller of a and b |
+| `log` | `log(n)` | number | Natural logarithm |
+| `log10` | `log10(n)` | number | Base-10 logarithm |
+| `sin` | `sin(n)` | number | Sine (n in radians) |
+| `cos` | `cos(n)` | number | Cosine (n in radians) |
+| `tan` | `tan(n)` | number | Tangent (n in radians) |
+| `asin` | `asin(n)` | number | Arc sine → radians |
+| `acos` | `acos(n)` | number | Arc cosine → radians |
+| `atan` | `atan(n)` | number | Arc tangent → radians |
+| `atan2` | `atan2(y, x)` | number | Two-argument arc tangent |
+| `toRadians` | `toRadians(deg)` | number | Degrees to radians |
+| `toDegrees` | `toDegrees(rad)` | number | Radians to degrees |
+| `random` | `random()` | number | Uniform random float in [0, 1) |
+| `randomInt` | `randomInt(bound)` | number | Uniform random integer in [0, bound) |
+| `clamp` | `clamp(n, min, max)` | number | Clamp n to [min, max] |
+| `sign` | `sign(n)` | number | -1, 0, or 1 |
+| `pi` | `pi()` | number | π ≈ 3.141592653589793 |
+| `e` | `e()` | number | e ≈ 2.718281828459045 |
+| `isNaN` | `isNaN(n)` | boolean | True if n is NaN |
+| `isInfinite` | `isInfinite(n)` | boolean | True if n is ±∞ |
+| `toInt` | `toInt(n)` | number | Truncate to integer (toward zero) |
+
+```larv
+import "math"
+
+print(sqrt(144))          // 12.0
+print(pow(2, 10))         // 1024.0
+print(round(3.7))         // 4.0
+print(clamp(15, 0, 10))   // 10.0
+print(pi())               // 3.141592653589793
 ```
 
 ---
 
-## 16. Standard Library — io
+### 15.2 `string`
 
 ```larv
-import io
+import "string"
 ```
 
-### Reading files
+All functions take a string as the first argument. Indices are zero-based.
+
+| Function | Signature | Returns | Description |
+|---|---|---|---|
+| `strLen` | `strLen(s)` | number | Number of characters |
+| `strUpper` | `strUpper(s)` | string | All characters uppercase |
+| `strLower` | `strLower(s)` | string | All characters lowercase |
+| `strTrim` | `strTrim(s)` | string | Strip leading and trailing whitespace |
+| `strTrimLeft` | `strTrimLeft(s)` | string | Strip leading whitespace |
+| `strTrimRight` | `strTrimRight(s)` | string | Strip trailing whitespace |
+| `strContains` | `strContains(s, sub)` | boolean | True if sub is a substring |
+| `strStartsWith` | `strStartsWith(s, prefix)` | boolean | True if s begins with prefix |
+| `strEndsWith` | `strEndsWith(s, suffix)` | boolean | True if s ends with suffix |
+| `strIndexOf` | `strIndexOf(s, sub)` | number | First index of sub, or -1 |
+| `strSlice` | `strSlice(s, from, to)` | string | Substring from index from (inclusive) to to (exclusive) |
+| `strReplace` | `strReplace(s, old, new)` | string | Replace first occurrence of old with new |
+| `strReplaceAll` | `strReplaceAll(s, old, new)` | string | Replace all occurrences |
+| `strSplit` | `strSplit(s, delim)` | array | Split s on delim |
+| `strJoin` | `strJoin(array, sep)` | string | Join array elements with sep |
+| `strRepeat` | `strRepeat(s, n)` | string | Concatenate s with itself n times |
+| `strReverse` | `strReverse(s)` | string | Reverse the characters |
+| `strCharAt` | `strCharAt(s, i)` | string | Single character at index i |
+| `strToNumber` | `strToNumber(s)` | number | Parse string as a number |
+| `strFromNumber` | `strFromNumber(n)` | string | Convert number to string |
+| `strIsEmpty` | `strIsEmpty(s)` | boolean | True if length is 0 |
+| `strPadLeft` | `strPadLeft(s, width, char)` | string | Left-pad s with char to reach width |
+| `strPadRight` | `strPadRight(s, width, char)` | string | Right-pad s with char to reach width |
+| `strChars` | `strChars(s)` | array | Array of individual characters |
 
 ```larv
-var text  = readFile("data.txt")          // entire file as string
-var lines = readLines("data.txt")         // array of lines
-var bytes = readBytes("image.png")        // array of byte values (0–255)
-```
+import "string"
 
-### Writing files
-
-```larv
-writeFile("out.txt", "hello\n")           // overwrite
-appendFile("log.txt", "new line\n")       // append
-writeBytes("out.bin", bytes)              // write byte array
-```
-
-### File and directory queries
-
-```larv
-fileExists("path/to/file")    // boolean
-isDir("path/to/dir")          // boolean
-fileSize("file.txt")          // size in bytes
-listDir(".")                  // array of entry paths
-```
-
-### Directory and file management
-
-```larv
-makeDir("new/nested/dir")              // creates all parent dirs
-copyFile("src.txt", "dst.txt")         // copy (overwrites dst)
-moveFile("old.txt", "new.txt")         // move / rename
-deleteFile("unwanted.txt")             // returns true if deleted
-```
-
-### Path utilities
-
-```larv
-cwd()                    // current working directory
-absPath("relative.txt")  // absolute path string
+print(strUpper("hello"))               // HELLO
+print(strSplit("a,b,c", ","))         // [a, b, c]
+print(strJoin(["x", "y", "z"], "-"))  // x-y-z
+print(strPadLeft("5", 3, "0"))        // 005
 ```
 
 ---
 
-## 17. Standard Library — http
+### 15.3 `io`
 
 ```larv
-import http
+import "io"
 ```
 
-All functions return a map with these keys:
+File paths can be absolute or relative to the current working directory.
 
-| Key      | Type    | Description              |
-|----------|---------|--------------------------|
-| `status` | number  | HTTP status code         |
-| `body`   | string  | Response body            |
-| `ok`     | boolean | True if status is 2xx    |
-
-Timeout for all requests is 30 seconds. Redirects are followed automatically.
-
-### GET
+| Function | Signature | Returns | Description |
+|---|---|---|---|
+| `readFile` | `readFile(path)` | string | Read entire file as a UTF-8 string |
+| `writeFile` | `writeFile(path, content)` | nil | Write string to file, replacing contents |
+| `appendFile` | `appendFile(path, content)` | nil | Append string to end of file |
+| `readLines` | `readLines(path)` | array | Array of lines (strings) |
+| `readBytes` | `readBytes(path)` | array | Raw byte array |
+| `writeBytes` | `writeBytes(path, bytes)` | nil | Write byte array to file |
+| `deleteFile` | `deleteFile(path)` | nil | Delete the file at path |
+| `fileExists` | `fileExists(path)` | boolean | True if the path exists as a file |
+| `isDir` | `isDir(path)` | boolean | True if the path is a directory |
+| `listDir` | `listDir(path)` | array | File names in the directory |
+| `makeDir` | `makeDir(path)` | nil | Create directory (including parents) |
+| `copyFile` | `copyFile(src, dst)` | nil | Copy a file |
+| `moveFile` | `moveFile(src, dst)` | nil | Move or rename a file |
+| `fileSize` | `fileSize(path)` | number | File size in bytes |
+| `cwd` | `cwd()` | string | Current working directory path |
+| `absPath` | `absPath(path)` | string | Absolute path of the given path |
 
 ```larv
-var res = httpGet("https://api.example.com/data")
-if res["ok"] {
-    print res["body"]
+import "io"
+
+writeFile("log.txt", "First line\n")
+appendFile("log.txt", "Second line\n")
+var content = readFile("log.txt")
+print(content)
+
+var entries = listDir(".")
+for entry in entries {
+    print(entry)
 }
 ```
 
-### POST
+---
+
+### 15.4 `list`
 
 ```larv
-var res = httpPost("https://api.example.com/submit", "raw body text")
+import "list"
 ```
 
-### POST with JSON
+A functional, index-oriented API for dynamic lists. Lists created with `listNew()` or array literals are interchangeable.
+
+| Function | Signature | Returns | Description |
+|---|---|---|---|
+| `listNew` | `listNew()` | array | Create empty list |
+| `listAdd` | `listAdd(list, value)` | nil | Append value |
+| `listAddAt` | `listAddAt(list, index, value)` | nil | Insert value at index |
+| `listRemove` | `listRemove(list, index)` | removed value | Remove element at index |
+| `listGet` | `listGet(list, index)` | value | Get element at index |
+| `listSet` | `listSet(list, index, value)` | nil | Replace element at index |
+| `listSize` | `listSize(list)` | number | Number of elements |
+| `listContains` | `listContains(list, value)` | boolean | True if value is present |
+| `listIndexOf` | `listIndexOf(list, value)` | number | First index of value, or -1 |
+| `listSlice` | `listSlice(list, from, to)` | array | Sub-list from to to (exclusive) |
+| `listReverse` | `listReverse(list)` | nil | Reverse in place |
+| `listSort` | `listSort(list)` | nil | Sort in place (natural order) |
+| `listConcat` | `listConcat(a, b)` | array | New list: a followed by b |
+| `listFlat` | `listFlat(list)` | array | Flatten one level of nested arrays |
+| `listUnique` | `listUnique(list)` | array | New list with duplicates removed |
+| `listFill` | `listFill(value, n)` | array | New list with value repeated n times |
+| `listClear` | `listClear(list)` | nil | Remove all elements |
+| `listIsEmpty` | `listIsEmpty(list)` | boolean | True if empty |
+| `listFirst` | `listFirst(list)` | value | First element |
+| `listLast` | `listLast(list)` | value | Last element |
+| `listPop` | `listPop(list)` | value | Remove and return last element |
+| `listShuffle` | `listShuffle(list)` | nil | Shuffle in place (random order) |
 
 ```larv
-var res = httpPostJson("https://api.example.com/json", "{\"key\":\"value\"}")
-print res["status"]
+import "list"
+
+var nums = listNew()
+listAdd(nums, 3)
+listAdd(nums, 1)
+listAdd(nums, 2)
+listSort(nums)
+print(nums)   // [1, 2, 3]
+
+var unique = listUnique([1, 2, 2, 3, 3, 3])
+print(unique)   // [1, 2, 3]
 ```
-
-### PUT
-
-```larv
-var res = httpPut("https://api.example.com/resource/1", "updated body")
-```
-
-### DELETE
-
-```larv
-var res = httpDelete("https://api.example.com/resource/1")
-print res["ok"]
-```
-
-### Custom request
-
-```larv
-var res = httpRequest("PATCH", "https://api.example.com/item", "{}", "application/json")
-```
-
-Signature: `httpRequest(method, url, body, contentType)`  
-A fifth argument (a map of string → string) adds custom headers.
 
 ---
 
-## 18. Standard Library — system
+### 15.5 `map`
 
 ```larv
-import system
+import "map"
 ```
 
-### Process control
+A string-keyed hash map. Keys must be strings.
+
+| Function | Signature | Returns | Description |
+|---|---|---|---|
+| `mapNew` | `mapNew()` | map | Create empty map |
+| `mapSet` | `mapSet(map, key, value)` | nil | Set key to value |
+| `mapGet` | `mapGet(map, key)` | value or nil | Get value for key |
+| `mapHas` | `mapHas(map, key)` | boolean | True if key exists |
+| `mapRemove` | `mapRemove(map, key)` | nil | Remove a key |
+| `mapSize` | `mapSize(map)` | number | Number of key-value pairs |
+| `mapKeys` | `mapKeys(map)` | array | Array of all keys |
+| `mapValues` | `mapValues(map)` | array | Array of all values |
+| `mapClear` | `mapClear(map)` | nil | Remove all entries |
+| `mapIsEmpty` | `mapIsEmpty(map)` | boolean | True if empty |
+| `mapMerge` | `mapMerge(a, b)` | map | New map: a merged with b (b wins on conflict) |
+| `mapContainsValue` | `mapContainsValue(map, value)` | boolean | True if any key maps to value |
+| `mapToList` | `mapToList(map)` | array | Array of `[key, value]` pairs |
 
 ```larv
-exit(0)       // exit with code 0
-exit(1)       // exit with code 1 (error)
+import "map"
+
+var scores = mapNew()
+mapSet(scores, "Alice", 95)
+mapSet(scores, "Bob", 87)
+print(mapGet(scores, "Alice"))    // 95
+print(mapKeys(scores))            // [Alice, Bob]
+print(mapSize(scores))            // 2
 ```
 
-### Environment
+---
+
+### 15.6 `http`
 
 ```larv
-var home = getEnv("HOME")     // nil if not set
-var args = getArgs()          // array of CLI args (may be empty)
+import "http"
 ```
 
-### Time
+All functions return a map with the following keys:
+
+| Key | Type | Description |
+|---|---|---|
+| `status` | number | HTTP status code (200, 404, etc.) |
+| `body` | string | Response body as a string |
+| `ok` | boolean | True if status is in 200–299 range |
+
+| Function | Signature | Description |
+|---|---|---|
+| `httpGet` | `httpGet(url)` | GET request |
+| `httpPost` | `httpPost(url, body)` | POST with plain-text body |
+| `httpPostJson` | `httpPostJson(url, body)` | POST with `application/json` content type |
+| `httpPut` | `httpPut(url, body)` | PUT request |
+| `httpDelete` | `httpDelete(url)` | DELETE request |
+| `httpRequest` | `httpRequest(url, method, contentType, body, headers)` | Fully custom request |
 
 ```larv
-var start = clock()           // milliseconds since Unix epoch
-var t     = nanoTime()        // nanoseconds (monotonic clock)
-sleep(1000)                   // pause for 1 second
+import "http"
+import "map"
+
+var resp = httpGet("https://api.example.com/data")
+if resp["ok"] {
+    print(resp["body"])
+} else {
+    printErr("HTTP " + resp["status"])
+}
+
+var headers = mapNew()
+mapSet(headers, "Authorization", "Bearer mytoken")
+var r = httpRequest("https://api.example.com/secure", "GET", nil, nil, headers)
 ```
 
-### Shell execution
+---
+
+### 15.7 `regex`
 
 ```larv
+import "regex"
+```
+
+Uses Java regular expression syntax (`java.util.regex`).
+
+| Function | Signature | Returns | Description |
+|---|---|---|---|
+| `regexMatch` | `regexMatch(input, pattern)` | boolean | True if entire input matches pattern |
+| `regexTest` | `regexTest(input, pattern)` | boolean | True if pattern is found anywhere in input |
+| `regexFind` | `regexFind(input, pattern)` | string or nil | First matching substring |
+| `regexFindAll` | `regexFindAll(input, pattern)` | array | All non-overlapping matches |
+| `regexReplace` | `regexReplace(input, pattern, replacement)` | string | Replace first match |
+| `regexReplaceAll` | `regexReplaceAll(input, pattern, replacement)` | string | Replace all matches |
+| `regexSplit` | `regexSplit(input, pattern)` | array | Split on pattern |
+| `regexGroup` | `regexGroup(input, pattern, groupIndex)` | string or nil | Capture group by index (1-based) |
+| `regexGroups` | `regexGroups(input, pattern)` | array | All capture groups from the first match |
+
+```larv
+import "regex"
+
+print(regexTest("hello123", "\\d+"))              // true
+print(regexFind("2026-05-18", "\\d{4}"))          // 2026
+print(regexFindAll("cat bat hat", "[a-z]at"))     // [cat, bat, hat]
+print(regexReplaceAll("foo bar foo", "foo", "x")) // x bar x
+
+var groups = regexGroups("2026-05-18", "(\\d{4})-(\\d{2})-(\\d{2})")
+print(groups)   // [2026, 05, 18]
+```
+
+---
+
+### 15.8 `date`
+
+```larv
+import "date"
+```
+
+Date strings use `"yyyy-MM-dd"` format by default. Datetime strings use `"yyyy-MM-dd HH:mm:ss"`.
+
+Time units for arithmetic functions: `"seconds"`, `"minutes"`, `"hours"`, `"days"`, `"weeks"`, `"months"`, `"years"`.
+
+| Function | Signature | Returns | Description |
+|---|---|---|---|
+| `timestamp` | `timestamp()` | number | Unix epoch time in milliseconds |
+| `dateNow` | `dateNow()` | string | Today's date as `"yyyy-MM-dd"` |
+| `timeNow` | `timeNow()` | string | Current time as `"HH:mm:ss"` |
+| `dateTimeNow` | `dateTimeNow()` | string | Current datetime as `"yyyy-MM-dd HH:mm:ss"` |
+| `dateFormat` | `dateFormat(ts, pattern)` | string | Format a millisecond timestamp with a Java pattern |
+| `dateParse` | `dateParse(str, pattern)` | number | Parse a date string to a millisecond timestamp |
+| `dateAdd` | `dateAdd(str, amount, unit)` | string | Add amount of unit to a date string |
+| `dateSub` | `dateSub(str, amount, unit)` | string | Subtract amount of unit from a date string |
+| `dateDiff` | `dateDiff(a, b, unit)` | number | Difference between date strings in unit |
+| `dayOfWeek` | `dayOfWeek(str)` | string | Day name (e.g. `"Monday"`) |
+| `monthName` | `monthName(str)` | string | Month name (e.g. `"January"`) |
+| `year` | `year(str)` | number | Extract the year |
+| `month` | `month(str)` | number | Extract the month (1–12) |
+| `day` | `day(str)` | number | Extract the day of month |
+| `hour` | `hour(str)` | number | Extract the hour |
+| `minute` | `minute(str)` | number | Extract the minute |
+| `second` | `second(str)` | number | Extract the second |
+| `isBefore` | `isBefore(a, b)` | boolean | True if date a is before b |
+| `isAfter` | `isAfter(a, b)` | boolean | True if date a is after b |
+
+```larv
+import "date"
+
+print(dateNow())                            // 2026-05-18
+print(dateAdd("2026-01-01", 30, "days"))    // 2026-01-31
+print(dateDiff("2026-01-01", "2026-12-31", "days"))   // 364
+print(dayOfWeek("2026-05-18"))              // Monday
+print(year("2026-05-18"))                   // 2026
+```
+
+---
+
+### 15.9 `encode`
+
+```larv
+import "encode"
+```
+
+(Also importable as `import "base64"` for backward compatibility.)
+
+| Function | Signature | Returns | Description |
+|---|---|---|---|
+| `base64Encode` | `base64Encode(str)` | string | Standard Base64 encoding |
+| `base64Decode` | `base64Decode(str)` | string | Standard Base64 decoding |
+| `base64EncodeUrl` | `base64EncodeUrl(str)` | string | URL-safe Base64 encoding |
+| `base64DecodeUrl` | `base64DecodeUrl(str)` | string | URL-safe Base64 decoding |
+| `hashMd5` | `hashMd5(str)` | string | MD5 hex digest |
+| `hashSha1` | `hashSha1(str)` | string | SHA-1 hex digest |
+| `hashSha256` | `hashSha256(str)` | string | SHA-256 hex digest |
+| `hashSha512` | `hashSha512(str)` | string | SHA-512 hex digest |
+| `hexEncode` | `hexEncode(str)` | string | Hex-encode UTF-8 bytes |
+| `hexDecode` | `hexDecode(hex)` | string | Decode hex string to UTF-8 |
+| `urlEncode` | `urlEncode(str)` | string | Percent-encode for URLs |
+| `urlDecode` | `urlDecode(str)` | string | Decode percent-encoded string |
+
+```larv
+import "encode"
+
+var encoded = base64Encode("Hello, World!")
+print(encoded)                   // SGVsbG8sIFdvcmxkIQ==
+print(base64Decode(encoded))     // Hello, World!
+
+print(hashSha256("password"))    // 64-char hex string
+print(urlEncode("a b+c"))        // a+b%2Bc
+```
+
+---
+
+### 15.10 `convert`
+
+```larv
+import "convert"
+```
+
+Type conversion and introspection utilities.
+
+| Function | Signature | Returns | Description |
+|---|---|---|---|
+| `toNumber` | `toNumber(value)` | number | Convert string or boolean to number |
+| `toString` | `toString(value)` | string | Convert any value to its string representation |
+| `toBool` | `toBool(value)` | boolean | Convert string/number to boolean; `"true"/"yes"/"1"/"on"` → true |
+| `toInt` | `toInt(n)` | number | Truncate float to integer (toward zero) |
+| `toHex` | `toHex(n)` | string | Integer to lowercase hex string |
+| `toOctal` | `toOctal(n)` | string | Integer to octal string |
+| `toBinary` | `toBinary(n)` | string | Integer to binary string |
+| `fromHex` | `fromHex(str)` | number | Hex string to number |
+| `fromOctal` | `fromOctal(str)` | number | Octal string to number |
+| `fromBinary` | `fromBinary(str)` | number | Binary string to number |
+| `toBytes` | `toBytes(str)` | array | UTF-8 string to byte array |
+| `fromBytes` | `fromBytes(bytes)` | string | Byte array to UTF-8 string |
+| `typeOf` | `typeOf(value)` | string | Runtime type name |
+
+```larv
+import "convert"
+
+print(toNumber("42"))      // 42
+print(toInt(9.99))         // 9
+print(toHex(255))          // ff
+print(toBinary(10))        // 1010
+print(fromHex("ff"))       // 255
+print(typeOf("hello"))     // String
+print(typeOf(42))          // Number
+print(typeOf([]))          // Array
+```
+
+---
+
+### 15.11 `system`
+
+```larv
+import "system"
+```
+
+OS and process interaction.
+
+| Function | Signature | Returns | Description |
+|---|---|---|---|
+| `exit` | `exit(code?)` | — | Terminate the process with exit code (default 0) |
+| `getEnv` | `getEnv(name)` | string or nil | Read an environment variable |
+| `getArgs` | `getArgs()` | array | Command-line arguments passed to the program |
+| `clock` | `clock()` | number | Elapsed JVM time in milliseconds |
+| `nanoTime` | `nanoTime()` | number | Elapsed JVM time in nanoseconds |
+| `sleep` | `sleep(ms)` | nil | Pause execution for ms milliseconds |
+| `exec` | `exec(cmd)` | map | Run shell command; returns `{exit, out, err, ok}` |
+| `osName` | `osName()` | string | OS name (e.g. `"Linux"`) |
+| `osArch` | `osArch()` | string | CPU architecture (e.g. `"amd64"`) |
+| `freeMemory` | `freeMemory()` | number | Free JVM heap memory in bytes |
+| `totalMemory` | `totalMemory()` | number | Total JVM heap memory in bytes |
+| `gc` | `gc()` | nil | Suggest a garbage collection cycle |
+
+`exec()` returns a map with:
+- `exit` — exit code (number)
+- `out` — stdout output (string)
+- `err` — stderr output (string)
+- `ok` — true if exit code is 0 (boolean)
+
+```larv
+import "system"
+
+print(osName())    // Linux
+
 var result = exec("ls -la")
-print result["exit"]    // exit code (number)
-print result["out"]     // stdout (string)
-print result["err"]     // stderr (string)
-print result["ok"]      // true if exit == 0
+if result["ok"] {
+    print(result["out"])
+} else {
+    printErr(result["err"])
+}
+
+sleep(1000)
+print("1 second later")
 ```
 
-`exec` runs via `sh -c` on Unix-like systems.
+---
 
-### JVM information
+### 15.12 `properties`
 
 ```larv
-print osName()          // e.g. "Linux", "Mac OS X"
-print osArch()          // e.g. "amd64", "aarch64"
-print javaVersion()     // e.g. "21.0.2"
-print freeMemory()      // JVM free heap bytes
-print totalMemory()     // JVM total heap bytes
-gc()                    // suggest GC (hint only)
+import "properties"
+```
+
+Read and write Java `.properties` files (key=value pairs).
+
+| Function | Signature | Returns | Description |
+|---|---|---|---|
+| `loadProp` | `loadProp(file)` | nil | Load a `.properties` file into memory |
+| `getProp` | `getProp(key)` | string or nil | Get a property value by key |
+| `setProp` | `setProp(file, key, value)` | nil | Set a property value |
+| `saveProp` | `saveProp(file)` | nil | Save current properties to file |
+| `getAllProps` | `getAllProps()` | map | Map of all loaded properties |
+
+```larv
+import "properties"
+
+loadProp("config.properties")
+print(getProp("database.host"))    // e.g. "localhost"
+
+setProp("config.properties", "app.version", "2.0")
+saveProp("config.properties")
+
+var all = getAllProps()
+print(all)
 ```
 
 ---
 
-## 19. Error Handling
+## 16. Error Types
 
-Larv errors are not catchable inside scripts in the current version. When an error occurs, the interpreter prints a formatted message and exits with code 1.
+The interpreter distinguishes three error kinds in its error messages:
 
-### Error format
+| Kind | Trigger |
+|---|---|
+| `LEXER` | Invalid characters, unterminated strings or raw strings |
+| `PARSER` | Unexpected tokens, missing braces/parentheses, malformed statements |
+| `RUNTIME` | Type errors, undefined variables, index out of bounds, division by zero, failed I/O |
+| `FFI` | Java class not found, method not found, argument type mismatch |
 
-```
-[KIND ERROR] line N, col C: message
-```
-
-For runtime errors that do not have column information:
-
-```
-[RUNTIME ERROR] line N: message
-```
-
-### Error kinds
-
-| Kind      | Description                                       |
-|-----------|---------------------------------------------------|
-| `LEXER`   | Invalid character or unterminated string          |
-| `PARSER`  | Unexpected token, missing `{`, `}`, `;`, etc.    |
-| `RUNTIME` | Type mismatch, undefined variable, index OOB, etc.|
-| `FFI`     | Java class not found, method not found, etc.      |
-
-### Common runtime errors
-
-| Message                                       | Cause                                      |
-|-----------------------------------------------|--------------------------------------------|
-| `Undefined variable 'x'`                      | Using a name before declaring it           |
-| `pop() called on an empty array`              | Calling `.pop()` on `[]`                   |
-| `remove() index N is out of bounds`           | Index beyond array length                  |
-| `len() expects an array`                      | Passing a non-array to `len()`             |
-| `strSlice(): index out of bounds`             | `from`/`to` outside string length          |
-| `Java class not found: 'com.X'`              | Wrong fully-qualified name in `include`    |
-
----
-
-## 20. Grammar Summary
+Errors display with red-colored output to `stderr` in the format:
 
 ```
-program       → statement* EOF
-
-statement     → varDecl | constDecl | printStmt | ifStmt
-              | whileStmt | forStmt | foreachStmt
-              | funcDecl | returnStmt | classDecl
-              | importStmt | includeStmt
-              | breakStmt | continueStmt
-              | exprStmt
-
-varDecl       → "var" IDENTIFIER ("=" expression)?
-constDecl     → "const" IDENTIFIER "=" expression
-printStmt     → "print" expression
-ifStmt        → "if" expression "{" block "}" ("else" "{" block "}")?
-whileStmt     → "while" expression "{" block "}"
-forStmt       → "for" forInit ";" expression ";" forIncr "{" block "}"
-foreachStmt   → "for" IDENTIFIER ":" expression "{" block "}"
-funcDecl      → "func" IDENTIFIER "(" params ")" "{" block "}"
-returnStmt    → "return" expression
-classDecl     → "class" IDENTIFIER "{" funcDecl* "}"
-importStmt    → "import" (IDENTIFIER | STRING)
-includeStmt   → "include" IDENTIFIER "from" STRING
-              ("involve" "{" STRING ("," STRING)* "}")?
-breakStmt     → "break"
-continueStmt  → "continue"
-exprStmt      → expression
-
-forInit       → IDENTIFIER "=" expression | exprStmt
-forIncr       → IDENTIFIER "++" | IDENTIFIER "--" | exprStmt
-params        → (IDENTIFIER ("," IDENTIFIER)*)?
-block         → statement* "}"
-
-expression    → assignment
-assignment    → (call ".")? IDENTIFIER "=" assignment
-              | (call "[" expression "]") "=" assignment
-              | equality
-equality      → comparison (("==" | "!=") comparison)*
-comparison    → addition (("<" | ">" | "<=" | ">=") addition)*
-addition      → multiplication (("+" | "-") multiplication)*
-multiplication→ unary (("*" | "/") unary)*
-unary         → "-" unary | call
-call          → primary (("(" args ")" | "." IDENTIFIER ("(" args ")")?
-              | "[" expression "]"))*
-primary       → NUMBER | STRING | "true" | "false" | "nil"
-              | IDENTIFIER | "this" | "new" IDENTIFIER "(" args ")"
-              | "[" args "]" | "(" expression ")"
-
-args          → (expression ("," expression)*)?
+[Kind] Message (line L, col C)
 ```
 
 ---
 
-*Larv 1.0.0-beta — created by Abd Allah Al Habbash*
+## 17. Execution Pipeline
+
+Every Larv program passes through four stages:
+
+```
+Source Text
+    │
+    ▼
+[Lexer] → List<Token>
+    │
+    ▼
+[Parser] → List<Statement> (AST)
+    │
+    ▼
+[Interpreter]
+    ├── StatementExecutor  (executes statements)
+    ├── ExpressionEvaluator (evaluates expressions)
+    ├── Environment         (variable scoping)
+    ├── NativeRegistry      (core built-ins)
+    ├── NativeLibraryLoader (stdlib on demand)
+    └── JavaClassRegistry   (FFI)
+```
+
+1. **Lexer** (`Lexer.java`) — tokenises the source string into a flat `List<Token>`, tracking line and column for every token.
+2. **Parser** — a two-phase Pratt parser: `ExpressionParser` handles expressions with operator precedence; `StatementParser` handles declarations, control flow, and other statements.
+3. **Interpreter** — tree-walking interpreter: `StatementExecutor` visits each `Statement`, `ExpressionEvaluator` evaluates each `Expression`. Scope is managed by a chain of `Environment` objects. Signals (`ReturnSignal`, `BreakSignal`, `ContinueSignal`, `ThrowSignal`) are used to implement non-local control flow.
+4. **Standard library** — each stdlib module is loaded lazily the first time its `import` statement is executed, registering native Java callbacks into the execution context.
