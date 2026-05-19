@@ -3,6 +3,7 @@ package com.habbashx.larv.parser;
 import com.habbashx.larv.lexer.TokenType;
 import com.habbashx.larv.parser.ast.expression.Expression;
 import com.habbashx.larv.parser.ast.statement.*;
+import com.habbashx.larv.parser.exception.ParseException;
 import com.habbashx.larv.parser.rule.StatementRule;
 import com.habbashx.larv.parser.stream.TokenStream;
 import org.jetbrains.annotations.Contract;
@@ -17,33 +18,20 @@ import java.util.Map;
  * Parses every statement in the Larv grammar using a
  * <b>Strategy + Command Registry</b> pattern.
  *
- * <p>Instead of an {@code if/else-if} chain that grows with every new keyword,
- * {@link #parse()} does a single {@link Map} lookup keyed on the current
- * {@link TokenType}. Each entry is a {@link StatementRule} — a method reference
- * that owns one keyword's full parse logic.</p>
- *
- * <p>Adding a new keyword requires exactly two steps:
- * <ol>
- *   <li>Write a private {@code parseXxx()} method.</li>
- *   <li>Register it in {@link #buildRegistry()}.</li>
- * </ol>
- * {@link #parse()} itself never needs to change.</p>
- *
- * <pre>
- * Grammar (statements)
- * ─────────────────────
- *   statement → letDecl | constDecl | printStmt | ifStmt | whileStmt
- *             | forStmt | breakStmt | continueStmt | funcDecl
- *             | returnStmt | classDecl | exprStmt
- * </pre>
+ * <h2>New statements in this version</h2>
+ * <ul>
+ *   <li>{@code try / catch / finally} — {@link #parseTryCatch()}</li>
+ *   <li>{@code throw expr}            — {@link #parseThrow()}</li>
+ *   <li>{@code switch expr { case … default … }}</li>
+ *   <li>{@code enum Name { A, B, C }}</li>
+ * </ul>
  */
 public class StatementParser {
 
-    private final TokenStream stream;
+    private final TokenStream      stream;
     private final ExpressionParser exprParser;
-    private final ArgumentParser argParser;
+    private final ArgumentParser   argParser;
 
-    /** Maps each keyword token type to its dedicated parse strategy. */
     private final Map<TokenType, StatementRule> registry;
 
     public StatementParser(TokenStream stream, ExpressionParser exprParser, ArgumentParser argParser) {
@@ -53,11 +41,6 @@ public class StatementParser {
         this.registry   = buildRegistry();
     }
 
-
-    /**
-     * Builds the keyword → rule map once at construction time.
-     * {@link EnumMap} gives O(1) lookup with zero boxing overhead.
-     */
     private @NotNull Map<TokenType, StatementRule> buildRegistry() {
         Map<TokenType, StatementRule> map = new EnumMap<>(TokenType.class);
 
@@ -72,29 +55,63 @@ public class StatementParser {
         map.put(TokenType.FUNC,     this::parseFunctionDecl);
         map.put(TokenType.RETURN,   this::parseReturn);
         map.put(TokenType.CLASS,    this::parseClassDecl);
-        map.put(TokenType.INCLUDE, this::parseJavaBind);
-        map.put(TokenType.IMPORT,  this::parseImport);
+        map.put(TokenType.INCLUDE,  this::parseJavaBind);
+        map.put(TokenType.IMPORT,   this::parseImport);
+        map.put(TokenType.MODULE,   this::parseModule);
+        // ── new ───────────────────────────────────────────────────────────────
+        map.put(TokenType.TRY,     this::parseTryCatch);
+        map.put(TokenType.THROW,   this::parseThrow);
+        map.put(TokenType.SWITCH,  this::parseSwitch);
+        map.put(TokenType.ENUM,    this::parseEnum);
 
         return map;
     }
 
-    /**
-     * Looks up the current token type in the registry and fires the matching rule.
-     * Falls back to an expression-statement when no keyword matches.
-     * No {@code if/else} chain — one map lookup.
-     */
     public Statement parse() {
-        int line = stream.peek().line(); // capture before consuming
+        int line = stream.peek().line();
         StatementRule rule = registry.get(stream.peek().tokenType());
 
         if (rule != null) {
-            stream.advance(); // consume the matched keyword token
+            stream.advance();
             Statement st = rule.parse();
             return withLine(st, line);
         }
 
+        if (stream.check(TokenType.IDENTIFIER)) {
+            TokenType next = stream.peekNext().tokenType();
+            String op = compoundOp(next);
+            if (op != null) {
+                String name = stream.advance().value();
+                stream.advance();
+                Expression rhs = exprParser.parse();
+                return withLine(new CompoundAssignStatement(name, op, rhs, -1), line);
+            }
+            if (next == TokenType.PLUS_PLUS) {
+                String name = stream.advance().value();
+                stream.advance();
+                return withLine(new IncrementStatement(name, -1), line);
+            }
+            if (next == TokenType.MINUS_MINUS) {
+                String name = stream.advance().value();
+                stream.advance();
+                return withLine(new DecrementStatement(name, -1), line);
+            }
+        }
+
         return withLine(parseExprStatement(), line);
     }
+
+    private String compoundOp(TokenType t) {
+        return switch (t) {
+            case PLUS_EQUAL  -> "+";
+            case MINUS_EQUAL -> "-";
+            case STAR_EQUAL  -> "*";
+            case SLASH_EQUAL -> "/";
+            default          -> null;
+        };
+    }
+
+    // ── Existing parsers (unchanged) ──────────────────────────────────────────
 
     private @NotNull Statement parseVar() {
         String name = stream.consumeValue(TokenType.IDENTIFIER, "Expected variable name after 'var'");
@@ -125,6 +142,10 @@ public class StatementParser {
 
     private List<Statement> parseElseBranch() {
         if (!stream.match(TokenType.ELSE)) return new ArrayList<>();
+        if (stream.match(TokenType.IF)) {
+            Statement nested = withLine(parseIf(), stream.peek().line());
+            return List.of(nested);
+        }
         stream.consume(TokenType.LBRACE, "Expected '{' to open else-body");
         return parseBlock();
     }
@@ -136,6 +157,23 @@ public class StatementParser {
     }
 
     private Statement parseFor() {
+        if (stream.check(TokenType.IDENTIFIER) && stream.checkNext(TokenType.IN)) {
+            return parseForeach();
+        }
+        return parseTraditionalFor();
+    }
+
+    @Contract(" -> new")
+    private @NotNull Statement parseForeach() {
+        String variable = stream.consumeValue(TokenType.IDENTIFIER, "Expected loop variable after 'for'");
+        stream.consume(TokenType.IN, "Expected 'in' after loop variable");
+        Expression iterable = exprParser.parse();
+        stream.consume(TokenType.LBRACE, "Expected '{' to open foreach-body");
+        return new ForeachStatement(variable, iterable, parseBlock(), -1);
+    }
+
+    @Contract(" -> new")
+    private @NotNull Statement parseTraditionalFor() {
         Statement  init      = parseForInit();
         stream.consume(TokenType.SEMICOLON, "Expected ';' after for-init");
         Expression condition = exprParser.parse();
@@ -186,12 +224,10 @@ public class StatementParser {
     private @NotNull Statement parseClassDecl() {
         String name = stream.consumeValue(TokenType.IDENTIFIER, "Expected class name after 'class'");
         stream.consume(TokenType.LBRACE, "Expected '{' to open class body");
-
         List<Statement> body = new ArrayList<>();
         while (!stream.check(TokenType.RBRACE) && !stream.isAtEnd()) {
             body.add(parse());
         }
-
         stream.consume(TokenType.RBRACE, "Expected '}' to close class body");
         return new ClassStatement(name, body, -1);
     }
@@ -201,65 +237,188 @@ public class StatementParser {
         return new ExprStatement(exprParser.parse(), -1);
     }
 
-    /**
-     * Parses two forms:
-     *   import math                    — stdlib library (identifier)
-     *   import "com.habbashx.Testing"  — Larv file import (quoted string)
-     *
-     * The IMPORT token has already been consumed by the registry dispatcher.
-     */
     @Contract(" -> new")
-    private @NotNull Statement parseImport() {
-        if (stream.check(TokenType.STRING)) {
-            // File import — import "com.habbashx.Testing"
-            String path = stream.consumeValue(TokenType.STRING, "Expected file path after 'import'");
-            stream.match(TokenType.SEMICOLON);
-            return ImportStatement.ofPath(path);
+    private @NotNull Statement parseModule() {
+        String name = stream.consumeValue(TokenType.IDENTIFIER, "Expected module name after 'module'");
+        stream.consume(TokenType.LBRACE, "Expected '{' to open module body");
+        List<Statement> body = new ArrayList<>();
+        while (!stream.check(TokenType.RBRACE) && !stream.isAtEnd()) {
+            body.add(parse());
         }
-        // Stdlib import — import math
-        String library = stream.consumeValue(TokenType.IDENTIFIER, "Expected library name after 'import'");
-        stream.match(TokenType.SEMICOLON);
-        return ImportStatement.ofLibrary(library);
+        stream.consume(TokenType.RBRACE, "Expected '}' to close module body");
+        return new ModuleStatement(name, body, -1);
     }
 
-    /**
-     * Parses:
-     *   include Alias from "com.example.ClassName"
-     *   include Alias from "com.example.ClassName" involve { "arg1", "arg2" }
-     *
-     * The INCLUDE token has already been consumed by the registry dispatcher.
-     */
+    private static final java.util.Set<String> STDLIB = java.util.Set.of(
+            "math", "io", "string", "list", "map", "http", "system",
+            "regex", "date", "base64", "converter", "properties"
+    );
+
+    private @NotNull Statement parseImport() {
+        String value = stream.consumeValue(TokenType.STRING,
+                "Expected a quoted name after 'import', e.g. import \"math\" or import \"com.foo.MyFile\"");
+        stream.match(TokenType.SEMICOLON);
+        if (STDLIB.contains(value)) {
+            return ImportStatement.ofLibrary(value);
+        }
+        return ImportStatement.ofPath(value);
+    }
+
     @Contract(" -> new")
     private @NotNull Statement parseJavaBind() {
         String alias     = stream.consumeValue(TokenType.IDENTIFIER, "Expected alias after 'include'");
         stream.consume(TokenType.FROM, "Expected 'from' after alias in java binding");
         String className = stream.consumeValue(TokenType.STRING, "Expected fully-qualified class name string after 'from'");
-
-        // Optional:  involve { "arg1", "arg2", ... }
         boolean hasInvolve = false;
         List<String> constructorArgs = new ArrayList<>();
         if (stream.match(TokenType.INVOLVE)) {
             hasInvolve = true;
             stream.consume(TokenType.LBRACE, "Expected '{' after 'involve'");
             while (!stream.check(TokenType.RBRACE) && !stream.isAtEnd()) {
-                String arg = stream.consumeValue(TokenType.STRING,
-                        "Expected string argument inside 'involve { ... }'");
+                String arg = stream.consumeValue(TokenType.STRING, "Expected string argument inside 'involve { ... }'");
                 constructorArgs.add(arg);
-                stream.match(TokenType.COMMA); // optional trailing comma
+                stream.match(TokenType.COMMA);
             }
             stream.consume(TokenType.RBRACE, "Expected '}' to close 'involve' argument list");
         }
-
-        // Optional trailing semicolon
         stream.match(TokenType.SEMICOLON);
-
         return new JavaBindStatement(alias, className, constructorArgs, hasInvolve, -1);
     }
 
+    // ── NEW: try / catch / finally ────────────────────────────────────────────
+
     /**
-     * Parses statements until a closing {@code }} is found.
-     * The opening {@code {} must already have been consumed before calling this.
+     * Parses:
+     * <pre>
+     *   try {
+     *       ...
+     *   } catch (e) {
+     *       ...
+     *   } finally {
+     *       ...
+     *   }
+     * </pre>
+     * Both {@code catch} and {@code finally} are optional, but at least one
+     * must be present.
+     *
+     * The {@code try} keyword has already been consumed by the registry.
      */
+    @Contract(" -> new")
+    private @NotNull Statement parseTryCatch() {
+        stream.consume(TokenType.LBRACE, "Expected '{' to open try-body");
+        List<Statement> tryBody = parseBlock();
+
+        String          catchVar  = null;
+        List<Statement> catchBody = new ArrayList<>();
+        List<Statement> finallyBody = new ArrayList<>();
+
+        if (stream.match(TokenType.CATCH)) {
+            stream.consume(TokenType.LPAREN, "Expected '(' after 'catch'");
+            catchVar = stream.consumeValue(TokenType.IDENTIFIER, "Expected variable name in catch(...)");
+            stream.consume(TokenType.RPAREN, "Expected ')' after catch variable");
+            stream.consume(TokenType.LBRACE, "Expected '{' to open catch-body");
+            catchBody = parseBlock();
+        }
+
+        if (stream.match(TokenType.FINALLY)) {
+            stream.consume(TokenType.LBRACE, "Expected '{' to open finally-body");
+            finallyBody = parseBlock();
+        }
+
+        if (catchBody.isEmpty() && finallyBody.isEmpty()) {
+            throw new ParseException("try block must have at least a catch or finally clause", stream.peek());
+        }
+
+        return new TryCatchStatement(tryBody, catchVar, catchBody, finallyBody, -1);
+    }
+
+    /**
+     * Parses:  {@code throw expr}
+     * The {@code throw} keyword has already been consumed.
+     */
+    @Contract(" -> new")
+    private @NotNull Statement parseThrow() {
+        return new ThrowStatement(exprParser.parse(), -1);
+    }
+
+    // ── NEW: switch ───────────────────────────────────────────────────────────
+
+    /**
+     * Parses:
+     * <pre>
+     *   switch expr {
+     *       case "a", "b" : { ... }
+     *       case 1        : { ... }
+     *       default       : { ... }
+     *   }
+     * </pre>
+     * The {@code switch} keyword has already been consumed.
+     * Multiple comma-separated values on one {@code case} are treated as
+     * an OR — the arm fires if the subject equals any of them.
+     */
+    @Contract(" -> new")
+    private @NotNull Statement parseSwitch() {
+        Expression subject = exprParser.parse();
+        stream.consume(TokenType.LBRACE, "Expected '{' to open switch body");
+
+        List<SwitchStatement.SwitchCase> cases = new ArrayList<>();
+        List<Statement> defaultBody = new ArrayList<>();
+
+        while (!stream.check(TokenType.RBRACE) && !stream.isAtEnd()) {
+
+            if (stream.match(TokenType.DEFAULT)) {
+                stream.consume(TokenType.COLON, "Expected ':' after 'default'");
+                stream.consume(TokenType.LBRACE, "Expected '{' to open default body");
+                defaultBody = parseBlock();
+                continue;
+            }
+
+            stream.consume(TokenType.CASE, "Expected 'case' or 'default' inside switch");
+
+            // One or more comma-separated match values
+            List<Expression> values = new ArrayList<>();
+            values.add(exprParser.parse());
+            while (stream.match(TokenType.COMMA)) {
+                values.add(exprParser.parse());
+            }
+
+            stream.consume(TokenType.COLON, "Expected ':' after case value(s)");
+            stream.consume(TokenType.LBRACE, "Expected '{' to open case body");
+            List<Statement> body = parseBlock();
+
+            cases.add(new SwitchStatement.SwitchCase(values, body));
+        }
+
+        stream.consume(TokenType.RBRACE, "Expected '}' to close switch");
+        return new SwitchStatement(subject, cases, defaultBody, -1);
+    }
+
+    // ── NEW: enum ─────────────────────────────────────────────────────────────
+
+    /**
+     * Parses:
+     * <pre>
+     *   enum Direction { NORTH, SOUTH, EAST, WEST }
+     * </pre>
+     * The {@code enum} keyword has already been consumed.
+     */
+    @Contract(" -> new")
+    private @NotNull Statement parseEnum() {
+        String name = stream.consumeValue(TokenType.IDENTIFIER, "Expected enum name after 'enum'");
+        stream.consume(TokenType.LBRACE, "Expected '{' to open enum body");
+
+        List<String> variants = new ArrayList<>();
+        while (!stream.check(TokenType.RBRACE) && !stream.isAtEnd()) {
+            variants.add(stream.consumeValue(TokenType.IDENTIFIER, "Expected enum variant name"));
+            stream.match(TokenType.COMMA); // optional trailing comma
+        }
+
+        stream.consume(TokenType.RBRACE, "Expected '}' to close enum body");
+        return new EnumStatement(name, variants, -1);
+    }
+
+    // ── Block / helpers ───────────────────────────────────────────────────────
+
     public List<Statement> parseBlock() {
         List<Statement> statements = new ArrayList<>();
         while (!stream.check(TokenType.RBRACE) && !stream.isAtEnd()) {
@@ -278,6 +437,8 @@ public class StatementParser {
             case LetStatement        s -> new LetStatement(s.name(), s.expression(), line);
             case ConstStatement      s -> new ConstStatement(s.name(), s.value(), line);
             case AssignStatement     s -> new AssignStatement(s.name(), s.value(), line);
+            case CompoundAssignStatement s -> new CompoundAssignStatement(s.name(), s.operator(), s.value(), line);
+            case ModuleStatement     s -> new ModuleStatement(s.name(), s.body(), line);
             case PrintStatement      s -> new PrintStatement(s.value(), line);
             case ExprStatement       s -> new ExprStatement(s.value(), line);
             case IfStatement         s -> new IfStatement(s.condition(), s.thenBranch(), s.elseBranch(), line);
@@ -296,6 +457,11 @@ public class StatementParser {
             case SetFieldStatement   s -> new SetFieldStatement(s.object(), s.field(), s.value(), line);
             case JavaBindStatement   s -> new JavaBindStatement(s.alias(), s.className(), s.constructorArgs(), s.hasInvolve(), line);
             case ImportStatement     s -> new ImportStatement(s.library(), s.path(), line);
+            // ── new ──────────────────────────────────────────────────────────
+            case TryCatchStatement   s -> new TryCatchStatement(s.tryBody(), s.catchVar(), s.catchBody(), s.finallyBody(), line);
+            case ThrowStatement      s -> new ThrowStatement(s.value(), line);
+            case SwitchStatement     s -> new SwitchStatement(s.subject(), s.cases(), s.defaultBody(), line);
+            case EnumStatement       s -> new EnumStatement(s.name(), s.variants(), line);
         };
     }
 }

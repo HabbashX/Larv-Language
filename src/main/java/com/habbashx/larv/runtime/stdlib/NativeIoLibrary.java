@@ -34,10 +34,12 @@ import java.util.List;
  *   cwd()                       → string   — current working directory
  *   absPath(path)               → string   — resolve to absolute path
  */
+@Native("IO Library")
 public class NativeIoLibrary implements NativeLibrary {
 
     private final ExecutionContext context;
 
+    @Contract(pure = true)
     public NativeIoLibrary(ExecutionContext context) {
         this.context = context;
     }

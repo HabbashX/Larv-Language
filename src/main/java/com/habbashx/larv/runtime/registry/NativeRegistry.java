@@ -34,6 +34,9 @@ import java.util.List;
  */
 public class NativeRegistry {
 
+    private static final String RED   = "\u001B[31m";
+    private static final String RESET = "\u001B[0m";
+
     private final ExecutionContext context;
 
     /**
@@ -59,8 +62,19 @@ public class NativeRegistry {
      */
     public void registerAll() {
         context.registerNative("print",   this::nativePrint);
+        context.registerNative("printErr",this::nativePrintErr);
         context.registerNative("input", this::nativeInput);
         context.registerNative("len",    this::nativeLen);
+        context.registerNative("range",  this::nativeRange);
+    }
+
+    /**
+     * {@code printErr(value)} — prints the value to {@code stderr} in red.
+     * Use inside catch blocks to visually distinguish error output.
+     */
+    private @Nullable Object nativePrintErr(@NotNull List<Object> args) {
+        System.err.println(RED + BinaryOperator.stringify(args.getFirst()) + RESET);
+        return null;
     }
 
     /**
@@ -100,5 +114,29 @@ public class NativeRegistry {
         Object value = args.getFirst();
         if (value instanceof List<?> list) return list.size();
         throw new RuntimeException("len() expects an array, got: " + value.getClass().getSimpleName());
+    }
+
+    /**
+     * {@code range(start, end)} — returns a list of numbers from {@code start}
+     * (inclusive) to {@code end} (exclusive), matching Python's range() behaviour.
+     *
+     * <p>Also supports single-argument form: {@code range(n)} → {@code range(0, n)}.</p>
+     *
+     * @param args one or two numbers
+     * @return a {@code List<Object>} of {@code Double} values
+     */
+    private @NotNull Object nativeRange(@NotNull List<Object> args) {
+        if (args.isEmpty() || args.size() > 2)
+            throw new RuntimeException("range() expects 1 or 2 arguments");
+        double start = args.size() == 2 ? toDouble(args.get(0)) : 0;
+        double end   = args.size() == 2 ? toDouble(args.get(1)) : toDouble(args.get(0));
+        List<Object> result = new java.util.ArrayList<>();
+        for (double i = start; i < end; i++) result.add(i);
+        return result;
+    }
+
+    private double toDouble(Object v) {
+        if (v instanceof Double d) return d;
+        throw new RuntimeException("range() arguments must be numbers, got: " + v);
     }
 }

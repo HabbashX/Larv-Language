@@ -32,7 +32,7 @@ import java.util.function.Supplier;
 public class NativeLibraryLoader {
 
     private static final Set<String> KNOWN = Set.of(
-            "math", "io", "string", "list", "map", "json", "http", "system"
+            "math", "io", "string", "list", "map", "json", "http", "system","date","regex","converter","base64","properties"
     );
 
     private final ExecutionContext context;
@@ -51,7 +51,6 @@ public class NativeLibraryLoader {
 
     public NativeLibraryLoader(ExecutionContext context) {
         this.context = context;
-
         registry = new HashMap<>();
         registry.put("math",   () -> new NativeMathLibrary(context));
         registry.put("io",     () -> new NativeIoLibrary(context));
@@ -60,6 +59,11 @@ public class NativeLibraryLoader {
         registry.put("map",    () -> new NativeMapLibrary(context));
         registry.put("http",   () -> new NativeHttpLibrary(context));
         registry.put("system", () -> new NativeSystemLibrary(context));
+        registry.put("date", () -> new NativeDateLibrary(context));
+        registry.put("base64",() -> new NativeEncodeLibrary(context));
+        registry.put("regex",() -> new NativeRegexLibrary(context));
+        registry.put("converter",() -> new NativeConvertLibrary(context));
+        registry.put("properties",() -> new NativePropertiesLibrary(context));
     }
 
     /**

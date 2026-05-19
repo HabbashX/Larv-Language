@@ -2,6 +2,7 @@ package com.habbashx.larv.runtime.stdlib;
 
 import com.habbashx.larv.error.LarvError;
 import com.habbashx.larv.runtime.ExecutionContext;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Unmodifiable;
 
@@ -37,10 +38,12 @@ import java.util.List;
  *   strPadRight(s,n,ch)    → string   right-pad to length n with ch
  *   strChars(s)            → array    array of individual characters
  */
+@Native("String Library")
 public class NativeStringLibrary implements NativeLibrary {
 
     private final ExecutionContext context;
 
+    @Contract(pure = true)
     public NativeStringLibrary(ExecutionContext context) {
         this.context = context;
     }

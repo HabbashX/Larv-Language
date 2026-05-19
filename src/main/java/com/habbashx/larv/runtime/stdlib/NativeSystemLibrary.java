@@ -30,10 +30,12 @@ import java.util.Map;
  *   totalMemory()     → number   JVM total heap bytes
  *   gc()              → nil      suggest garbage collection
  */
+@Native("System Library")
 public class NativeSystemLibrary implements NativeLibrary {
 
     private final ExecutionContext context;
 
+    @Contract(pure = true)
     public NativeSystemLibrary(ExecutionContext context) {
         this.context = context;
     }
@@ -49,7 +51,6 @@ public class NativeSystemLibrary implements NativeLibrary {
         context.registerNative("exec",        this::exec);
         context.registerNative("osName",      this::osName);
         context.registerNative("osArch",      this::osArch);
-        context.registerNative("javaVersion", this::javaVersion);
         context.registerNative("freeMemory",  this::freeMemory);
         context.registerNative("totalMemory", this::totalMemory);
         context.registerNative("gc",          this::gc);
@@ -86,7 +87,6 @@ public class NativeSystemLibrary implements NativeLibrary {
     private Object nanoTime(List<Object> args)   { return (double) System.nanoTime(); }
     private @Unmodifiable Object osName(List<Object> args)     { return System.getProperty("os.name"); }
     private @Unmodifiable Object osArch(List<Object> args)     { return System.getProperty("os.arch"); }
-    private @Unmodifiable Object javaVersion(List<Object> args){ return System.getProperty("java.version"); }
     private Object freeMemory(List<Object> args) { return (double) Runtime.getRuntime().freeMemory(); }
     private Object totalMemory(List<Object> args){ return (double) Runtime.getRuntime().totalMemory(); }
     private @Nullable Object gc(List<Object> args)         { Runtime.getRuntime().gc(); return null; }

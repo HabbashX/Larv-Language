@@ -40,6 +40,7 @@ import java.util.List;
  *   isInfinite(n)   → boolean  — check if value is infinite
  *   toInt(n)        → number   — truncate to integer
  */
+@Native("Math Library")
 public class NativeMathLibrary implements NativeLibrary {
 
     private final ExecutionContext context;

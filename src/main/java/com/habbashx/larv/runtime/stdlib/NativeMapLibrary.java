@@ -2,7 +2,10 @@ package com.habbashx.larv.runtime.stdlib;
 
 import com.habbashx.larv.error.LarvError;
 import com.habbashx.larv.runtime.ExecutionContext;
+import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -29,6 +32,7 @@ import java.util.Map;
  *   mapContainsValue(m,v)  → boolean  true if any value equals v
  *   mapToList(map)         → array    array of [key, value] pairs
  */
+@Native("Map Library")
 public class NativeMapLibrary implements NativeLibrary{
 
     private final ExecutionContext context;
@@ -67,38 +71,41 @@ public class NativeMapLibrary implements NativeLibrary{
         return s;
     }
 
-    private Object mapNew(List<Object> a)      { return new LinkedHashMap<String, Object>(); }
+    @Contract(value = "_ -> new", pure = true)
+    private @NotNull Object mapNew(List<Object> a)      { return new LinkedHashMap<String, Object>(); }
     private Object mapSize(List<Object> a)     { return (double) mapArg(a,0,"mapSize").size(); }
-    private Object mapIsEmpty(List<Object> a)  { return mapArg(a,0,"mapIsEmpty").isEmpty(); }
-    private Object mapClear(List<Object> a)    { mapArg(a,0,"mapClear").clear(); return null; }
-    private Object mapHas(List<Object> a)      { return mapArg(a,0,"mapHas").containsKey(keyArg(a,1,"mapHas")); }
+    private @NotNull @Unmodifiable Object mapIsEmpty(List<Object> a)  { return mapArg(a,0,"mapIsEmpty").isEmpty(); }
+    private @Nullable Object mapClear(List<Object> a)    { mapArg(a,0,"mapClear").clear(); return null; }
+    private @NotNull @Unmodifiable Object mapHas(List<Object> a)      { return mapArg(a,0,"mapHas").containsKey(keyArg(a,1,"mapHas")); }
     private Object mapGet(List<Object> a)      { return mapArg(a,0,"mapGet").getOrDefault(keyArg(a,1,"mapGet"), null); }
-    private Object mapRemove(List<Object> a)   { mapArg(a,0,"mapRemove").remove(keyArg(a,1,"mapRemove")); return null; }
+    private @Nullable Object mapRemove(List<Object> a)   { mapArg(a,0,"mapRemove").remove(keyArg(a,1,"mapRemove")); return null; }
 
-    private Object mapSet(List<Object> a) {
+    private @Nullable Object mapSet(List<Object> a) {
         mapArg(a,0,"mapSet").put(keyArg(a,1,"mapSet"), a.size() > 2 ? a.get(2) : null);
         return null;
     }
 
-    private Object mapKeys(List<Object> a) {
+    @Contract("_ -> new")
+    private @NotNull Object mapKeys(List<Object> a) {
         return new ArrayList<>(mapArg(a,0,"mapKeys").keySet());
     }
 
-    private Object mapValues(List<Object> a) {
+    @Contract("_ -> new")
+    private @NotNull Object mapValues(List<Object> a) {
         return new ArrayList<>(mapArg(a,0,"mapValues").values());
     }
 
-    private Object mapContainsValue(List<Object> a) {
+    private @NotNull @Unmodifiable Object mapContainsValue(List<Object> a) {
         return mapArg(a,0,"mapContainsValue").containsValue(a.size() > 1 ? a.get(1) : null);
     }
 
-    private Object mapMerge(List<Object> a) {
+    private @NotNull Object mapMerge(List<Object> a) {
         Map<String, Object> out = new LinkedHashMap<>(mapArg(a,0,"mapMerge"));
         out.putAll(mapArg(a,1,"mapMerge"));
         return out;
     }
 
-    private Object mapToList(List<Object> a) {
+    private @NotNull Object mapToList(List<Object> a) {
         List<Object> out = new ArrayList<>();
         for (Map.Entry<String, Object> entry : mapArg(a,0,"mapToList").entrySet()) {
             List<Object> pair = new ArrayList<>();

@@ -32,6 +32,7 @@ import java.util.Map;
  * Headers can be added to httpRequest as a 5th argument (a map of strings).
  * Timeout is fixed at 30 seconds.
  */
+@Native("Http Library")
 public class NativeHttpLibrary implements NativeLibrary {
 
     private final ExecutionContext context;
@@ -109,11 +110,9 @@ public class NativeHttpLibrary implements NativeLibrary {
                     .uri(URI.create(url))
                     .timeout(Duration.ofSeconds(30));
 
-            // extra headers
             for (Map.Entry<String, Object> e : extraHeaders.entrySet())
                 builder.header(e.getKey(), e.getValue().toString());
 
-            // body
             HttpRequest.BodyPublisher publisher = (body == null || body.isEmpty())
                     ? HttpRequest.BodyPublishers.noBody()
                     : HttpRequest.BodyPublishers.ofString(body);

@@ -197,6 +197,15 @@ public class JavaClassRegistry {
         if (s.equals("System.err")) {
             return System.err;
         }
+
+        // Check for constructor spec: some.pkg.ClassName(args...)
+        int parenOpen = s.indexOf('(');
+        if (parenOpen > 0 && s.endsWith(")")) {
+            String fqcn    = s.substring(0, parenOpen).trim();
+            String argsRaw = s.substring(parenOpen + 1, s.length() - 1).trim();
+            return constructFromSpec(fqcn, argsRaw);
+        }
+
         int lastDot = s.lastIndexOf('.');
         if (lastDot > 0 && lastDot < s.length() - 1) {
 

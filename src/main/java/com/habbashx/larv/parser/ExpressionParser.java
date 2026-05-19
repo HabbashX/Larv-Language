@@ -76,7 +76,8 @@ public final class ExpressionParser {
         map.put(TokenType.TRUE, () -> new BooleanExpression(true));
         map.put(TokenType.FALSE, () -> new BooleanExpression(false));
         map.put(TokenType.MINUS, this::parseUnaryMinus);
-        map.put(TokenType.LBRACKET,this::parseArrayLiteral); // Fix: [1,2,3] array literals
+        map.put(TokenType.BANG,  this::parseLogicalNot);
+        map.put(TokenType.LBRACKET,this::parseArrayLiteral);
 
         return map;
     }
@@ -84,6 +85,9 @@ public final class ExpressionParser {
     private @NotNull Map<TokenType, InfixRule> buildInfixRules() {
         Map<TokenType, InfixRule> map = new EnumMap<>(TokenType.class);
 
+        map.put(TokenType.AND,      this::parseLogical);
+        map.put(TokenType.OR,       this::parseLogical);
+        map.put(TokenType.QUESTION, this::parseTernary);
         map.put(TokenType.EQEQ, this::parseBinary);
         map.put(TokenType.NOTEQ, this::parseBinary);
         map.put(TokenType.LT, this::parseBinary);
@@ -92,8 +96,8 @@ public final class ExpressionParser {
         map.put(TokenType.GTE, this::parseBinary);
         map.put(TokenType.PLUS,  this::parseBinary);
         map.put(TokenType.MINUS, this::parseBinary);
-        map.put(TokenType.STAR,  this::parseBinary);   // Fix: * was missing
-        map.put(TokenType.SLASH, this::parseBinary);   // Fix: / was missing
+        map.put(TokenType.STAR,  this::parseBinary);
+        map.put(TokenType.SLASH, this::parseBinary);
         map.put(TokenType.LPAREN,   this::parseCall);
         map.put(TokenType.DOT,      this::parseGet);
         map.put(TokenType.LBRACKET, this::parseIndex);
@@ -106,6 +110,11 @@ public final class ExpressionParser {
 
         map.put(TokenType.EQUAL,    Precedence.ASSIGNMENT);
 
+        map.put(TokenType.QUESTION,  Precedence.TERNARY);
+
+        map.put(TokenType.OR,      Precedence.LOGICAL_OR);
+        map.put(TokenType.AND,     Precedence.LOGICAL_AND);
+
         map.put(TokenType.EQEQ,    Precedence.EQUALITY);
         map.put(TokenType.NOTEQ,   Precedence.EQUALITY);
 
@@ -116,8 +125,8 @@ public final class ExpressionParser {
 
         map.put(TokenType.PLUS,    Precedence.TERM);
         map.put(TokenType.MINUS,   Precedence.TERM);
-        map.put(TokenType.STAR,    Precedence.FACTOR);   // Fix: * binds tighter than +
-        map.put(TokenType.SLASH,   Precedence.FACTOR);   // Fix: / binds tighter than +
+        map.put(TokenType.STAR,    Precedence.FACTOR);
+        map.put(TokenType.SLASH,   Precedence.FACTOR);
 
         map.put(TokenType.LPAREN,   Precedence.POSTFIX);
         map.put(TokenType.DOT,      Precedence.POSTFIX);
@@ -269,5 +278,38 @@ public final class ExpressionParser {
         }
         stream.consume(TokenType.RBRACKET, "Expected ']' to close array literal");
         return new ArrayExpression(elements);
+    }
+
+    /**
+     * Parses a short-circuit logical expression: {@code left && right} or {@code left || right}.
+     * Right side is parsed at one precedence higher so the operator is left-associative.
+     */
+    private @NotNull Expression parseLogical(Expression left) {
+        String op = stream.previous().value();           // "&&" or "||"
+        int prec  = precedenceOf(stream.previous().tokenType());
+        Expression right = parse(prec);                  // left-associative
+        return new LogicalExpression(left, op, right);
+    }
+
+    /**
+     * Parses the ternary expression: {@code condition ? thenExpr, elseExpr}.
+     * The {@code ?} has already been consumed as the infix token.
+     * Comma separates the two branches (avoids conflict with function-call commas).
+     */
+    private @NotNull Expression parseTernary(Expression condition) {
+        Expression thenBranch = parse(Precedence.NONE);
+        stream.consume(TokenType.COMMA, "Expected ',' between ternary branches — use: condition ? thenValue, elseValue");
+        Expression elseBranch = parse(Precedence.TERNARY - 1);
+        return new TernaryExpression(condition, thenBranch, elseBranch);
+    }
+
+    /**
+     * Parses logical NOT: {@code !expr}.
+     * The {@code !} has already been consumed as the prefix token.
+     */
+    @Contract(" -> new")
+    private @NotNull Expression parseLogicalNot() {
+        Expression operand = parse(Precedence.UNARY);
+        return new UnaryExpression("!", operand);
     }
 }

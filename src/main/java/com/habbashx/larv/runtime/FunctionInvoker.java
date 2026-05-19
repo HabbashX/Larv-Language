@@ -4,6 +4,8 @@ import com.habbashx.larv.error.LarvError;
 import com.habbashx.larv.parser.ast.statement.FunctionStatement;
 import com.habbashx.larv.parser.ast.statement.Statement;
 import com.habbashx.larv.signal.ReturnSignal;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 
@@ -129,7 +131,7 @@ public class FunctionInvoker {
      * @param params the formal parameter names
      * @param args   the evaluated argument values
      */
-    private void bindParams(List<String> params, List<Object> args) {
+    private void bindParams(@NotNull List<String> params, List<Object> args) {
         for (int i = 0; i < params.size(); i++) {
             context.getEnvironment().define(params.get(i), i < args.size() ? args.get(i) : null);
         }
@@ -141,7 +143,7 @@ public class FunctionInvoker {
      * @param body the statements to execute
      * @return the return value from a {@code return} statement, or {@code null}
      */
-    private Object captureReturn(List<Statement> body) {
+    private @Nullable Object captureReturn(List<Statement> body) {
         try {
             blockRunner.run(body);
             return null;

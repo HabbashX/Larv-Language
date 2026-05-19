@@ -26,6 +26,12 @@ public interface StatementVisitor {
     /** Updates an existing variable ({@code name = expr}). */
     void visitAssign(AssignStatement st);
 
+    /** Applies a compound operator to an existing variable ({@code x += expr}, etc.). */
+    void visitCompoundAssign(CompoundAssignStatement st);
+
+    /** Registers a named module (namespace) of functions and constants. */
+    void visitModule(ModuleStatement st);
+
     /** Evaluates an expression for its side effects only. */
     void visitExpr(ExprStatement st);
 
@@ -41,11 +47,24 @@ public interface StatementVisitor {
     /** Runs a traditional {@code for} loop with init / condition / increment. */
     void visitFor(ForStatement st);
 
+    /**
+     * Iterates over each element of a collection ({@code for x in list { }}).
+     *
+     * @param st the foreach statement node
+     */
+    void visitForeach(ForeachStatement st);
+
     /** Exits the nearest enclosing loop (throws {@link com.habbashx.larv.signal.BreakSignal}). */
     void visitBreak(BreakStatement st);
 
     /** Skips the rest of the current iteration (throws {@link com.habbashx.larv.signal.ContinueSignal}). */
     void visitContinue(ContinueStatement st);
+
+    /** Increments a numeric variable by 1 ({@code name++}). */
+    void visitIncrement(IncrementStatement st);
+
+    /** Decrements a numeric variable by 1 ({@code name--}). */
+    void visitDecrement(DecrementStatement st);
 
     /** Returns a value from the current function (throws {@link com.habbashx.larv.signal.ReturnSignal}). */
     void visitReturn(ReturnStatement st);
@@ -58,4 +77,16 @@ public interface StatementVisitor {
 
     /** Binds a Java class or instance to a short alias for FFI use. */
     void visitJavaBind(JavaBindStatement st);
+
+    /** Executes a try / catch / finally block. */
+    void visitTryCatch(TryCatchStatement st);
+
+    /** Throws a user-level error (or any value) as a {@link com.habbashx.larv.signal.ThrowSignal}. */
+    void visitThrow(ThrowStatement st);
+
+    /** Evaluates a switch expression and runs the matching case arm. */
+    void visitSwitch(SwitchStatement st);
+
+    /** Defines an enum type as a LarvObject of ordinal constants. */
+    void visitEnum(EnumStatement st);
 }

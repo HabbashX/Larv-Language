@@ -37,7 +37,7 @@ public class Environment {
     private final Map<String, Object> values   = new HashMap<>();
 
     /** Names that have been declared {@code const} in this scope. */
-    private final Set<String>         constants = new HashSet<>();
+    private final Set<String> constants = new HashSet<>();
 
     /**
      * The enclosing scope, or {@code null} for the root (global) environment.

@@ -13,103 +13,127 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-/**
- * Command-line entry point for the Larv interpreter.
- *
- * <h2>Usage</h2>
- * <pre>
- *   larv run &lt;file.larv&gt;     — execute a Larv source file
- *   larv --version            — print the interpreter version
- *   larv --creator            — print information about the creator
- * </pre>
- *
- * <h2>Execution pipeline</h2>
- * <ol>
- *   <li>Read the source file from disk.</li>
- *   <li>Lex: {@link Lexer#tokenize()} → {@code List<Token>}</li>
- *   <li>Parse: {@link Parser#parse()} → {@code List<Statement>}</li>
- *   <li>Interpret: {@link Interpreter#execute(List)}</li>
- * </ol>
- *
- * <p>Any {@link LarvError} is caught, formatted with line/column information,
- * and printed to {@code stderr} before exiting with code {@code 1}.  Unexpected
- * Java exceptions are also caught and reported as internal errors.</p>
- */
 public class Main {
 
-    /**
-     * Entry point invoked by the JVM.
-     *
-     * @param args command-line arguments; {@code args[0]} is the sub-command
-     *             and {@code args[1]} (for {@code run}) is the file path
-     */
-    public static void main(String @NotNull [] args) {
-        
-        if (args.length < 0) return;
+    private static final String RED   = "\u001B[31m";
+    private static final String RESET = "\u001B[0m";
 
-        switch(args[0]) {
-            case "--version" -> System.out.println("Larv Version: 1.0.0-beta");
-            case "--creator" -> System.out.println("""
-                    Creator: Abd Allah Al Habbash
-                    or you can call me Habbash
-                    
-                    github: Habbashx
-                    instagram: abdallah_alhabbash
-                    """);
-            case "run" -> {
-                if (args.length < 1) {
-                    System.out.println("please provide file name");
-                    return;
-                }
-                String filePath = args[1];
-                runLarv(filePath);
-            }
-        }
-
+    private static void printError(String message) {
+        System.err.println(RED + message + RESET);
     }
 
-    /**
-     * Reads, lexes, parses, and executes the given {@code .larv} file.
-     *
-     * <p>The file path is resolved to an absolute, normalized {@link Path}.
-     * The parent directory of the file becomes the project root for resolving
-     * relative imports.</p>
-     *
-     * @param filePath the path to the {@code .larv} file to execute
-     */
-    private static void runLarv(final String filePath){
-        String source;
-
-        final Path file = Path.of(filePath).toAbsolutePath().normalize();
+    public static void main(String @NotNull [] args) {
 
         try {
+
+            if (args.length == 0) {
+                System.out.println("Larv Language");
+                System.out.println("Usage:");
+                System.out.println("  larv run <file.larv>");
+                System.out.println("  larv --version");
+                System.out.println("  larv --creator");
+                return;
+            }
+
+            switch (args[0]) {
+
+                case "--version" ->
+                        System.out.println("Larv Version: 1.0.2");
+
+                case "--creator" ->
+                        System.out.println("""
+                                Creator: Abd Allah Al Habbash
+                                or you can call me Habbash
+                                
+                                github: Habbashxl
+                                """);
+
+                case "run" -> {
+
+                    if (args.length < 2) {
+                        printError("please provide file name");
+                        System.exit(1);
+                        return;
+                    }
+
+                    String filePath = args[1];
+                    runLarv(filePath);
+                }
+
+                default -> {
+                    printError("Unknown command: " + args[0]);
+
+                    System.out.println();
+                    System.out.println("Available commands:");
+                    System.out.println("  larv run <file.larv>");
+                    System.out.println("  larv --version");
+                    System.out.println("  larv --creator");
+
+                    System.exit(1);
+                }
+            }
+
+        } catch (Exception e) {
+
+            printError("Fatal Internal Error: " + e.getMessage());
+            e.printStackTrace();
+
+            System.exit(1);
+        }
+    }
+
+    private static void runLarv(final String filePath) {
+
+        String source;
+
+        final Path file = Path.of(filePath)
+                .toAbsolutePath()
+                .normalize();
+
+        try {
+
             source = Files.readString(file);
+
         } catch (IOException e) {
-            System.err.println("Error Cannot read file'" + filePath + "': " + e.getMessage());
+
+            printError("Error: cannot read file '" + filePath + "'");
+            printError(e.getMessage());
+
             System.exit(1);
             return;
         }
 
         try {
-            final Lexer lexer  = new Lexer(source);
+
+            final Lexer lexer = new Lexer(source);
             final List<Token> tokens = lexer.tokenize();
 
-            Parser parser  = new Parser(tokens);
-            List<Statement> program = parser.parse();
+            final Parser parser = new Parser(tokens);
+            final List<Statement> program = parser.parse();
 
-            Path projectRoot = file.getParent() != null ? file.getParent() : Path.of(".");
-            Interpreter interpreter = new Interpreter(projectRoot);
+            final Path projectRoot =
+                    file.getParent() != null
+                            ? file.getParent()
+                            : Path.of(".");
+
+            final Interpreter interpreter =
+                    new Interpreter(projectRoot);
+
             interpreter.execute(program);
 
         } catch (LarvError e) {
-            System.err.println(e.format());
+
+            printError(e.format());
             System.exit(1);
 
         } catch (Exception e) {
-            System.err.println("Internal Error " + e.getMessage());
-            System.err.println("Please report this bug. Java detail: " + e.getClass().getSimpleName());
+
+            printError("Internal Error: " + e.getMessage());
+            printError("Java Exception: " + e.getClass().getSimpleName());
+
+            e.printStackTrace();
+
             System.exit(1);
         }
     }
-
 }

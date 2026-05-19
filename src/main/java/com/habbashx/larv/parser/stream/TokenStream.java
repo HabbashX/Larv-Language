@@ -49,6 +49,12 @@ public class TokenStream {
                 && tokens.get(current + 1).tokenType() == type;
     }
 
+    /** Returns the token one position ahead without consuming anything. */
+    public Token peekNext() {
+        if (current + 1 < tokens.size()) return tokens.get(current + 1);
+        return tokens.get(tokens.size() - 1); // return EOF if at end
+    }
+
     /**
      * Advances past the current token and returns the one just consumed.
      * Safe to call at EOF — it will not advance past the last token.

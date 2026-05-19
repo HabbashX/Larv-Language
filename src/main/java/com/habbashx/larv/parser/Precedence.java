@@ -24,11 +24,14 @@ public final class Precedence {
 
     public static final int NONE       = 0;
     public static final int ASSIGNMENT = 1;
-    public static final int EQUALITY   = 2;
-    public static final int COMPARISON = 3;
-    public static final int TERM       = 4;
-    public static final int FACTOR     = 5;
-    public static final int UNARY      = 6;
-    public static final int POSTFIX    = 7;
+    public static final int TERNARY    = 2;  // ? ,
+    public static final int LOGICAL_OR = 3;  // ||
+    public static final int LOGICAL_AND= 4;  // &&
+    public static final int EQUALITY   = 5;  // == !=
+    public static final int COMPARISON = 6;  // < > <= >=
+    public static final int TERM       = 7;  // + -
+    public static final int FACTOR     = 8;  // * /
+    public static final int UNARY      = 9;  // - !
+    public static final int POSTFIX    = 10; // () . []
 
 }
