@@ -39,7 +39,7 @@ public final class BinaryOperator {
      * @return the result of the operation
      * @throws LarvError if an operand is the wrong type or division by zero occurs
      */
-    public static Object apply(String op, Object left, Object right) {
+    public static Object apply(@NotNull String op, Object left, Object right) {
         return switch (op) {
             case "==" -> nullSafeEquals(left, right);
             case "!=" -> !((boolean) nullSafeEquals(left, right));

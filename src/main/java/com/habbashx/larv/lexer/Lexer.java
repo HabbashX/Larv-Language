@@ -1,6 +1,9 @@
 package com.habbashx.larv.lexer;
 
 import com.habbashx.larv.error.LarvError;
+import com.habbashx.larv.lexer.Token;
+import com.habbashx.larv.lexer.TokenType;
+import org.jetbrains.annotations.Contract;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -57,7 +60,7 @@ public class Lexer {
             case '.' -> addToken(TokenType.DOT,      ".");
 
             case '+' -> { if (match('+')) addToken(TokenType.PLUS_PLUS);   else if (match('=')) addToken(TokenType.PLUS_EQUAL);  else addToken(TokenType.PLUS); }
-            case '-' -> { if (match('-')) addToken(TokenType.MINUS_MINUS); else if (match('=')) addToken(TokenType.MINUS_EQUAL); else addToken(TokenType.MINUS); }
+            case '-' -> { if (match('-')) addToken(TokenType.MINUS_MINUS); else if (match('=')) addToken(TokenType.MINUS_EQUAL); else if (match('>')) addToken(TokenType.ARROW); else addToken(TokenType.MINUS); }
             case '*' -> { if (match('=')) addToken(TokenType.STAR_EQUAL);  else addToken(TokenType.STAR); }
             case '/' -> {
                 if (match('/')) { while (!isAtEnd() && peek() != '\n') advance(); }
@@ -73,11 +76,10 @@ public class Lexer {
             case '>' -> { if (match('=')) addToken(TokenType.GTE); else addToken(TokenType.GT); }
 
             case '"' -> {
-                // Peek ahead: triple-quote → raw string, else normal string
                 if (current + 1 < source.length()
                         && source.charAt(current) == '"'
                         && source.charAt(current + 1) == '"') {
-                    current += 2; // consume the two remaining opening quotes
+                    current += 2;
                     rawString();
                 } else {
                     string();
@@ -95,8 +97,6 @@ public class Lexer {
             }
         }
     }
-
-    // ── Normal string ─────────────────────────────────────────────────────────
 
     private void string() {
         int startLine = line;
@@ -136,8 +136,6 @@ public class Lexer {
         addToken(TokenType.STRING, sb.toString());
     }
 
-    // ── Raw / multi-line string  """ ... """ ──────────────────────────────────
-
     /**
      * Scans a triple-quoted raw string. The opening {@code """} has already been
      * consumed. Content is captured verbatim (no escape processing) until the
@@ -158,7 +156,6 @@ public class Lexer {
         int startCol  = col();
         StringBuilder sb = new StringBuilder();
 
-        // Strip an optional immediate newline after the opening """
         if (!isAtEnd() && peek() == '\n') {
             advance();
             line++;
@@ -166,11 +163,10 @@ public class Lexer {
         }
 
         while (!isAtEnd()) {
-            // Check for closing """
             if (peek() == '"'
                     && current + 1 < source.length() && source.charAt(current + 1) == '"'
                     && current + 2 < source.length() && source.charAt(current + 2) == '"') {
-                current += 3; // consume closing """
+                current += 3;
                 addToken(TokenType.RAW_STRING, sb.toString());
                 return;
             }
@@ -183,8 +179,6 @@ public class Lexer {
                 "Unterminated raw string — opened here", startLine, startCol, LarvError.Kind.LEXER);
     }
 
-    // ── Number ────────────────────────────────────────────────────────────────
-
     private void number() {
         while (!isAtEnd() && isDigit(peek())) advance();
         if (!isAtEnd() && peek() == '.' && current + 1 < source.length()
@@ -194,8 +188,6 @@ public class Lexer {
         }
         addToken(TokenType.NUMBER, source.substring(start, current));
     }
-
-    // ── Identifier / keyword ──────────────────────────────────────────────────
 
     private void identifier() {
         while (!isAtEnd() && isAlphaNumeric(peek())) advance();
@@ -232,20 +224,26 @@ public class Lexer {
             case "case"     -> TokenType.CASE;
             case "default"  -> TokenType.DEFAULT;
             case "enum"     -> TokenType.ENUM;
+            case "get"      -> TokenType.GET;
+            case "set"      -> TokenType.SET;
+            case "sync"     -> TokenType.SYNC;
+            case "core"     -> TokenType.CORE;
+            case "override" -> TokenType.OVERRIDE;
+            case "defer"    -> TokenType.DEFER;
+            case "atomic" -> TokenType.ATOMIC;
+            case "volatile" -> TokenType.VOLATILE;
             default         -> TokenType.IDENTIFIER;
         };
         addToken(type, text);
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private boolean isAtEnd()         { return current >= source.length(); }
-    private char    advance()         { return source.charAt(current++); }
-    private char    peek()            { return isAtEnd() ? '\0' : source.charAt(current); }
+    @Contract(pure = true) private boolean isAtEnd() { return current >= source.length(); }
+    @Contract(mutates = "this") private char advance() { return source.charAt(current++); }
+    private char peek() { return isAtEnd() ? '\0' : source.charAt(current); }
     private boolean match(char exp)   { if (isAtEnd() || source.charAt(current) != exp) return false; current++; return true; }
-    private void addToken(TokenType t)             { addToken(t, source.substring(start, current)); }
+    private void addToken(TokenType t) { addToken(t, source.substring(start, current)); }
     private void addToken(TokenType t, String val) { tokens.add(new Token(t, val, line, col())); }
-    private boolean isDigit(char c)       { return c >= '0' && c <= '9'; }
-    private boolean isAlpha(char c)       { return Character.isLetter(c) || c == '_'; }
+    @Contract(pure = true) private boolean isDigit(char c)       { return c >= '0' && c <= '9'; }
+    private boolean isAlpha(char c) { return Character.isLetter(c) || c == '_'; }
     private boolean isAlphaNumeric(char c){ return isAlpha(c) || isDigit(c); }
 }

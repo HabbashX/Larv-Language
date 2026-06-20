@@ -31,35 +31,29 @@ import java.util.Map;
  *   gc()              → nil      suggest garbage collection
  */
 @Native("System Library")
-public class NativeSystemLibrary implements NativeLibrary {
+@Deprecated(since = "1.1.0") // unused by compiler & interpreter
+public class NativeSystemLibrary extends NativeLibrary {
 
-    private final ExecutionContext context;
 
     @Contract(pure = true)
     public NativeSystemLibrary(ExecutionContext context) {
-        this.context = context;
+        super(context);
     }
 
     @Override
     public void registerAll() {
-        context.registerNative("exit",        this::exit);
-        context.registerNative("getEnv",      this::getEnv);
-        context.registerNative("getArgs",     this::getArgs);
-        context.registerNative("clock",       this::clock);
-        context.registerNative("nanoTime",    this::nanoTime);
-        context.registerNative("sleep",       this::sleep);
-        context.registerNative("exec",        this::exec);
-        context.registerNative("osName",      this::osName);
-        context.registerNative("osArch",      this::osArch);
-        context.registerNative("freeMemory",  this::freeMemory);
-        context.registerNative("totalMemory", this::totalMemory);
-        context.registerNative("gc",          this::gc);
-    }
-
-    private String strArg(@NotNull List<Object> args, int i, String fn) {
-        if (args.size() <= i || !(args.get(i) instanceof String s))
-            throw new LarvError(fn + "(): argument " + (i+1) + " must be a string", -1, LarvError.Kind.RUNTIME);
-        return s;
+        getExecutionContext().registerNative("exit",        this::exit);
+        getExecutionContext().registerNative("getEnv",      this::getEnv);
+        getExecutionContext().registerNative("getArgs",     this::getArgs);
+        getExecutionContext().registerNative("clock",       this::clock);
+        getExecutionContext().registerNative("nanoTime",    this::nanoTime);
+        getExecutionContext().registerNative("sleep",       this::sleep);
+        getExecutionContext().registerNative("exec",        this::exec);
+        getExecutionContext().registerNative("osName",      this::osName);
+        getExecutionContext().registerNative("osArch",      this::osArch);
+        getExecutionContext().registerNative("freeMemory",  this::freeMemory);
+        getExecutionContext().registerNative("totalMemory", this::totalMemory);
+        getExecutionContext().registerNative("gc",          this::gc);
     }
 
     private double numArg(@NotNull List<Object> args, int i, String fn) {

@@ -27,8 +27,8 @@ import java.lang.annotation.Target;
  * @see NativeLibrary
  */
 @Target(ElementType.TYPE)
+@Deprecated(since = "1.1.0") // unused by compiler & interpreter
 public @interface Native {
-// NOTE this annotation is only for docs so it will not affect in implementation
     /**
      * The import name as written in Larv source, e.g. {@code "math"} for
      * {@code import "math"}.

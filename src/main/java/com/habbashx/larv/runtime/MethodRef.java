@@ -9,5 +9,6 @@ import com.habbashx.larv.parser.ast.statement.FunctionStatement;
  * @param self the object instance the method is bound to
  * @param fn   the function statement that contains the method body
  */
+@Deprecated(since = "1.1.0") //unsued
 public record MethodRef(LarvObject self , FunctionStatement fn) {
 }

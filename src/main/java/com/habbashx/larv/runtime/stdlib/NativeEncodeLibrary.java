@@ -37,34 +37,29 @@ import java.util.List;
  *   urlDecode(str)             → string   decode a percent-encoded string
  */
 @Native("Base64 Encoder & Decoder Library")
-public class NativeEncodeLibrary implements NativeLibrary {
+@Deprecated(since = "1.1.0") // unused by compiler & interpreter
+public class NativeEncodeLibrary extends NativeLibrary {
 
-    private final ExecutionContext context;
 
-    public NativeEncodeLibrary(ExecutionContext context) {
-        this.context = context;
+    public NativeEncodeLibrary(ExecutionContext executionContext) {
+        super(executionContext);
     }
+
 
     @Override
     public void registerAll() {
-        context.registerNative("base64Encode",    this::base64Encode);
-        context.registerNative("base64Decode",    this::base64Decode);
-        context.registerNative("base64EncodeUrl", this::base64EncodeUrl);
-        context.registerNative("base64DecodeUrl", this::base64DecodeUrl);
-        context.registerNative("hashMd5",         this::hashMd5);
-        context.registerNative("hashSha1",        this::hashSha1);
-        context.registerNative("hashSha256",      this::hashSha256);
-        context.registerNative("hashSha512",      this::hashSha512);
-        context.registerNative("hexEncode",       this::hexEncode);
-        context.registerNative("hexDecode",       this::hexDecode);
-        context.registerNative("urlEncode",       this::urlEncode);
-        context.registerNative("urlDecode",       this::urlDecode);
-    }
-
-    private String strArg(@NotNull List<Object> args, int i, String fn) {
-        if (args.size() <= i || !(args.get(i) instanceof String s))
-            throw new LarvError(fn + "(): argument " + (i + 1) + " must be a string", -1, LarvError.Kind.RUNTIME);
-        return s;
+        getExecutionContext().registerNative("base64Encode",    this::base64Encode);
+        getExecutionContext().registerNative("base64Decode",    this::base64Decode);
+        getExecutionContext().registerNative("base64EncodeUrl", this::base64EncodeUrl);
+        getExecutionContext().registerNative("base64DecodeUrl", this::base64DecodeUrl);
+        getExecutionContext().registerNative("hashMd5",         this::hashMd5);
+        getExecutionContext().registerNative("hashSha1",        this::hashSha1);
+        getExecutionContext().registerNative("hashSha256",      this::hashSha256);
+        getExecutionContext().registerNative("hashSha512",      this::hashSha512);
+        getExecutionContext().registerNative("hexEncode",       this::hexEncode);
+        getExecutionContext().registerNative("hexDecode",       this::hexDecode);
+        getExecutionContext().registerNative("urlEncode",       this::urlEncode);
+        getExecutionContext().registerNative("urlDecode",       this::urlDecode);
     }
 
     private String hash(@NotNull String input, String algorithm, String fn) {

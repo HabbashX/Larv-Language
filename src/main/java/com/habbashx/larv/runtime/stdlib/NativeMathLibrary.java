@@ -41,44 +41,44 @@ import java.util.List;
  *   toInt(n)        → number   — truncate to integer
  */
 @Native("Math Library")
-public class NativeMathLibrary implements NativeLibrary {
+@Deprecated(since = "1.1.0") // unused by compiler & interpreter
+public class NativeMathLibrary extends NativeLibrary {
 
-    private final ExecutionContext context;
 
     public NativeMathLibrary(ExecutionContext context) {
-        this.context = context;
+        super(context);
     }
 
     @Override
     public void registerAll() {
-        context.registerNative("sqrt",      this::sqrt);
-        context.registerNative("pow",       this::pow);
-        context.registerNative("abs",       this::abs);
-        context.registerNative("floor",     this::floor);
-        context.registerNative("ceil",      this::ceil);
-        context.registerNative("round",     this::round);
-        context.registerNative("max",       this::max);
-        context.registerNative("min",       this::min);
-        context.registerNative("log",       this::log);
-        context.registerNative("log10",     this::log10);
-        context.registerNative("sin",       this::sin);
-        context.registerNative("cos",       this::cos);
-        context.registerNative("tan",       this::tan);
-        context.registerNative("asin",      this::asin);
-        context.registerNative("acos",      this::acos);
-        context.registerNative("atan",      this::atan);
-        context.registerNative("atan2",     this::atan2);
-        context.registerNative("toRadians", this::toRadians);
-        context.registerNative("toDegrees", this::toDegrees);
-        context.registerNative("random",    this::random);
-        context.registerNative("randomInt", this::randomInt);
-        context.registerNative("clamp",     this::clamp);
-        context.registerNative("sign",      this::sign);
-        context.registerNative("pi",        this::pi);
-        context.registerNative("e",         this::e);
-        context.registerNative("isNaN",     this::isNaN);
-        context.registerNative("isInfinite",this::isInfinite);
-        context.registerNative("toInt",     this::toInt);
+        getExecutionContext().registerNative("sqrt",      this::sqrt);
+        getExecutionContext().registerNative("pow",       this::pow);
+        getExecutionContext().registerNative("abs",       this::abs);
+        getExecutionContext().registerNative("floor",     this::floor);
+        getExecutionContext().registerNative("ceil",      this::ceil);
+        getExecutionContext().registerNative("round",     this::round);
+        getExecutionContext().registerNative("max",       this::max);
+        getExecutionContext().registerNative("min",       this::min);
+        getExecutionContext().registerNative("log",       this::log);
+        getExecutionContext().registerNative("log10",     this::log10);
+        getExecutionContext().registerNative("sin",       this::sin);
+        getExecutionContext().registerNative("cos",       this::cos);
+        getExecutionContext().registerNative("tan",       this::tan);
+        getExecutionContext().registerNative("asin",      this::asin);
+        getExecutionContext().registerNative("acos",      this::acos);
+        getExecutionContext().registerNative("atan",      this::atan);
+        getExecutionContext().registerNative("atan2",     this::atan2);
+        getExecutionContext().registerNative("toRadians", this::toRadians);
+        getExecutionContext().registerNative("toDegrees", this::toDegrees);
+        getExecutionContext().registerNative("random",    this::random);
+        getExecutionContext().registerNative("randomInt", this::randomInt);
+        getExecutionContext().registerNative("clamp",     this::clamp);
+        getExecutionContext().registerNative("sign",      this::sign);
+        getExecutionContext().registerNative("pi",        this::pi);
+        getExecutionContext().registerNative("e",         this::e);
+        getExecutionContext().registerNative("isNaN",     this::isNaN);
+        getExecutionContext().registerNative("isInfinite",this::isInfinite);
+        getExecutionContext().registerNative("toInt",     this::toInt);
     }
 
     private double numArg(@NotNull List<Object> args, int index, String fnName) {

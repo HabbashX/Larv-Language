@@ -18,7 +18,7 @@ import com.habbashx.larv.parser.ast.statement.*;
 public interface StatementVisitor {
 
     /** Declares a mutable variable ({@code var name = expr}). */
-    void visitLet(LetStatement st);
+    void visitVar(VarStatement st);
 
     /** Declares an immutable constant ({@code const NAME = expr}). */
     void visitConst(ConstStatement st);
@@ -89,4 +89,13 @@ public interface StatementVisitor {
 
     /** Defines an enum type as a LarvObject of ordinal constants. */
     void visitEnum(EnumStatement st);
+
+    /**
+     * Registers a deferred expression to be evaluated when the enclosing
+     * block exits.  Deferred calls run in LIFO order.
+     */
+    void visitDefer(DeferStatement st);
+
+    void visitAtomic(AtomicStatement st);
+
 }

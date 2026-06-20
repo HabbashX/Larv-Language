@@ -31,6 +31,7 @@ import java.util.List;
  * create a construction cycle.  It is therefore injected lazily via
  * {@link #setBlockRunner(BlockRunner)} after both objects are constructed.</p>
  */
+@Deprecated(since = "1.1.0") // unused by compiler
 public class FunctionInvoker {
 
     /**
@@ -38,6 +39,7 @@ public class FunctionInvoker {
      * Implemented by {@link StatementExecutor#runBlock}.
      */
     @FunctionalInterface
+    @Deprecated(since = "1.1.0") // unused by compiler
     public interface BlockRunner {
         /**
          * @param body the statements to execute in the current scope
@@ -47,6 +49,14 @@ public class FunctionInvoker {
 
     private final ExecutionContext context;
     private BlockRunner blockRunner;
+
+    /**
+     * Per-function-name monitors used to implement {@code : sync} on plain
+     * (non-method) functions.  Each function name maps to a dedicated lock
+     * object so that different sync functions do not block each other.
+     */
+    private final java.util.concurrent.ConcurrentHashMap<String, Object> syncMonitors =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * Constructs a {@code FunctionInvoker} for the given context.
@@ -74,11 +84,24 @@ public class FunctionInvoker {
      * the result.  If fewer arguments are supplied than declared parameters,
      * the extra parameters are bound to {@code null}.</p>
      *
+     * <p>If the function is declared with the {@code : sync} modifier, the
+     * body execution is wrapped in a {@code synchronized} block on a per-function
+     * monitor, ensuring only one thread executes the body at a time.</p>
+     *
      * @param fn   the function declaration AST node
      * @param args the evaluated argument values
      * @return the function's return value, or {@code null} if no {@code return} was hit
      */
-    public Object invokeFunction(FunctionStatement fn, List<Object> args) {
+    public Object invokeFunction(@NotNull FunctionStatement fn, List<Object> args) {
+        if (fn.isSync()) {
+            Object monitor = syncMonitors.computeIfAbsent(fn.name(), k -> new Object());
+            synchronized (monitor) {
+                return withScope(() -> {
+                    bindParams(fn.params(), args);
+                    return captureReturn(fn.body());
+                });
+            }
+        }
         return withScope(() -> {
             bindParams(fn.params(), args);
             return captureReturn(fn.body());
@@ -89,14 +112,34 @@ public class FunctionInvoker {
      * Invokes a method on {@code self} — same as {@link #invokeFunction} but
      * also binds {@code "this"} to the receiver object before binding parameters.
      *
+     * <p>If the method is declared with the {@code : sync} modifier, the
+     * body execution is synchronized on the receiver object itself, so that
+     * concurrent calls on the same instance are serialized.</p>
+     *
      * @param fn   the method declaration AST node
      * @param self the receiver object
      * @param args the evaluated argument values
      * @return the method's return value, or {@code null} if no {@code return} was hit
      */
     public Object invokeMethod(FunctionStatement fn, LarvObject self, List<Object> args) {
+        if (fn.isSync()) {
+            synchronized (self) {
+                return invokeMethodBody(fn, self, args);
+            }
+        }
+        return invokeMethodBody(fn, self, args);
+    }
+
+    private Object invokeMethodBody(FunctionStatement fn, LarvObject self, List<Object> args) {
         return withScope(() -> {
             context.getEnvironment().define("this", self);
+
+            self.getFields().forEach((key, value) -> {
+                if (!key.equals("__methods__")) {
+                    context.getEnvironment().define(key, value);
+                }
+            });
+
             bindParams(fn.params(), args);
             return captureReturn(fn.body());
         });
@@ -131,9 +174,9 @@ public class FunctionInvoker {
      * @param params the formal parameter names
      * @param args   the evaluated argument values
      */
-    private void bindParams(@NotNull List<String> params, List<Object> args) {
+    private void bindParams(@NotNull List<FunctionStatement.Parameter> params, List<Object> args) {
         for (int i = 0; i < params.size(); i++) {
-            context.getEnvironment().define(params.get(i), i < args.size() ? args.get(i) : null);
+            context.getEnvironment().define(params.get(i).name(), i < args.size() ? args.get(i) : null);
         }
     }
 

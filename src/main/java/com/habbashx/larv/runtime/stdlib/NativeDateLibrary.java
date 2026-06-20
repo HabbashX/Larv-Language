@@ -39,49 +39,42 @@ import java.util.Locale;
  *   isAfter(ts1, ts2)              → boolean  ts1 > ts2
  */
 @Native("Date Library")
-public class NativeDateLibrary implements NativeLibrary {
+@Deprecated(since = "1.1.0") // unused by compiler & interpreter
+public class NativeDateLibrary extends NativeLibrary {
 
-    private final ExecutionContext context;
 
-    public NativeDateLibrary(ExecutionContext context) {
-        this.context = context;
+    public NativeDateLibrary(ExecutionContext executionContext) {
+        super(executionContext);
     }
 
     @Override
     public void registerAll() {
-        context.registerNative("timestamp",   this::timestamp);
-        context.registerNative("dateNow",     this::dateNow);
-        context.registerNative("timeNow",     this::timeNow);
-        context.registerNative("dateTimeNow", this::dateTimeNow);
-        context.registerNative("dateFormat",  this::dateFormat);
-        context.registerNative("dateParse",   this::dateParse);
-        context.registerNative("dateAdd",     this::dateAdd);
-        context.registerNative("dateSub",     this::dateSub);
-        context.registerNative("dateDiff",    this::dateDiff);
-        context.registerNative("dayOfWeek",   this::dayOfWeek);
-        context.registerNative("monthName",   this::monthName);
-        context.registerNative("year",        this::year);
-        context.registerNative("month",       this::month);
-        context.registerNative("day",         this::day);
-        context.registerNative("hour",        this::hour);
-        context.registerNative("minute",      this::minute);
-        context.registerNative("second",      this::second);
-        context.registerNative("isBefore",    this::isBefore);
-        context.registerNative("isAfter",     this::isAfter);
+        getExecutionContext().registerNative("timestamp",   this::timestamp);
+        getExecutionContext().registerNative("dateNow",     this::dateNow);
+        getExecutionContext().registerNative("timeNow",     this::timeNow);
+        getExecutionContext().registerNative("dateTimeNow", this::dateTimeNow);
+        getExecutionContext().registerNative("dateFormat",  this::dateFormat);
+        getExecutionContext().registerNative("dateParse",   this::dateParse);
+        getExecutionContext().registerNative("dateAdd",     this::dateAdd);
+        getExecutionContext().registerNative("dateSub",     this::dateSub);
+        getExecutionContext().registerNative("dateDiff",    this::dateDiff);
+        getExecutionContext().registerNative("dayOfWeek",   this::dayOfWeek);
+        getExecutionContext().registerNative("monthName",   this::monthName);
+        getExecutionContext().registerNative("year",        this::year);
+        getExecutionContext().registerNative("month",       this::month);
+        getExecutionContext().registerNative("day",         this::day);
+        getExecutionContext().registerNative("hour",        this::hour);
+        getExecutionContext().registerNative("minute",      this::minute);
+        getExecutionContext().registerNative("second",      this::second);
+        getExecutionContext().registerNative("isBefore",    this::isBefore);
+        getExecutionContext().registerNative("isAfter",     this::isAfter);
     }
 
-    // ── helpers ───────────────────────────────────────────────────────────────
 
     private double numArg(@NotNull List<Object> args, int i, String fn) {
         if (args.size() <= i || !(args.get(i) instanceof Double d))
             throw new LarvError(fn + "(): argument " + (i + 1) + " must be a number (timestamp)", -1, LarvError.Kind.RUNTIME);
         return (Double) args.get(i);
-    }
-
-    private String strArg(@NotNull List<Object> args, int i, String fn) {
-        if (args.size() <= i || !(args.get(i) instanceof String s))
-            throw new LarvError(fn + "(): argument " + (i + 1) + " must be a string", -1, LarvError.Kind.RUNTIME);
-        return s;
     }
 
     @Contract("_ -> new")

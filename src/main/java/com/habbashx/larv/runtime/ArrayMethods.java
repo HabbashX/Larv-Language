@@ -36,6 +36,7 @@ import java.util.List;
  *
  * <p>This class is a utility class and cannot be instantiated.</p>
  */
+@Deprecated(since = "1.1.0") // unused by compiler & interpreter
 public class ArrayMethods {
 
     /**

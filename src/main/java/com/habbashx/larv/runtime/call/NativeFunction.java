@@ -18,6 +18,7 @@ import java.util.function.Function;
  * @see com.habbashx.larv.runtime.registry.NativeRegistry
  * @see com.habbashx.larv.runtime.stdlib.NativeLibrary
  */
+@Deprecated(since = "1.1.0")
 public class NativeFunction implements LarvCallable {
 
     /** The Java implementation of this native function. */

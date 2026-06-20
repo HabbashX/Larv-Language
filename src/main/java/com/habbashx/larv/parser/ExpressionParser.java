@@ -212,7 +212,7 @@ public final class ExpressionParser {
     private @NotNull Expression parseBinary(Expression left) {
         String     operator  = stream.previous().value();
         int        precedence = precedenceOf(stream.previous().tokenType());
-        Expression right     = parse(precedence); // left-associative: same level
+        Expression right     = parse(precedence);
         return new BinaryExpression(left, operator, right);
     }
 
@@ -268,7 +268,7 @@ public final class ExpressionParser {
         return new UnaryExpression("-", operand);
     }
 
-    // Fix: parses [elem, elem, ...] array literal expressions
+    @Contract(" -> new")
     private @NotNull Expression parseArrayLiteral() {
         List<Expression> elements = new java.util.ArrayList<>();
         if (!stream.check(TokenType.RBRACKET)) {
@@ -296,6 +296,7 @@ public final class ExpressionParser {
      * The {@code ?} has already been consumed as the infix token.
      * Comma separates the two branches (avoids conflict with function-call commas).
      */
+    @Contract("_ -> new")
     private @NotNull Expression parseTernary(Expression condition) {
         Expression thenBranch = parse(Precedence.NONE);
         stream.consume(TokenType.COMMA, "Expected ',' between ternary branches — use: condition ? thenValue, elseValue");

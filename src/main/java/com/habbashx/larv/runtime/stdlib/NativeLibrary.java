@@ -1,5 +1,12 @@
 package com.habbashx.larv.runtime.stdlib;
 
+import com.habbashx.larv.error.LarvError;
+import com.habbashx.larv.runtime.ExecutionContext;
+import org.jetbrains.annotations.Contract;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.List;
+
 /**
  * Contract implemented by every Larv standard library module.
  *
@@ -37,7 +44,15 @@ package com.habbashx.larv.runtime.stdlib;
  *
  * @see Native
  */
-public interface NativeLibrary {
+@Deprecated(since = "1.1.0") // unused by compiler & interpreter
+public abstract class NativeLibrary {
+
+    private final ExecutionContext executionContext;
+
+    @Contract(pure = true)
+    public NativeLibrary(ExecutionContext executionContext) {
+        this.executionContext = executionContext;
+    }
 
     /**
      * Registers all functions provided by this library into the runtime context.
@@ -46,5 +61,15 @@ public interface NativeLibrary {
      * {@link com.habbashx.larv.runtime.stdlib.loader.NativeLibraryLoader#load(String)}.
      * Subsequent {@code import} statements for the same library are no-ops.</p>
      */
-    void registerAll();
+    public abstract void registerAll();
+
+    public String strArg(@NotNull List<Object> args, int i, String fn) {
+        if (args.size() <= i || !(args.get(i) instanceof String s))
+            throw new LarvError(fn + "(): argument " + (i+1) + " must be a string", -1, LarvError.Kind.RUNTIME);
+        return s;
+    }
+
+    public ExecutionContext getExecutionContext() {
+        return executionContext;
+    }
 }

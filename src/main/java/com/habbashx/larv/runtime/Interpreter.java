@@ -28,6 +28,7 @@ import java.util.List;
  * {@code import "com.example.File"} paths.  Pass the directory that contains
  * the entry-point {@code .larv} file.</p>
  */
+@Deprecated(since = "1.1.0") //unused by compiler
 public class Interpreter {
 
     private final StatementExecutor executor;

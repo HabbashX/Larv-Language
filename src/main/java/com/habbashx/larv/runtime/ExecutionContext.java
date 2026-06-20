@@ -37,6 +37,7 @@ import java.util.function.Function;
  *       file imports.</li>
  * </ul>
  */
+@Deprecated(since = "1.1.0") // unused by compiler
 public class ExecutionContext {
 
     /** The currently active lexical scope. */
@@ -135,8 +136,6 @@ public class ExecutionContext {
      * @return the {@link ClassStatement}, or {@code null} if not declared
      */
     public ClassStatement getClass(String name) { return classes.get(name); }
-
-    // ── Native function registry ──────────────────────────────────────────────
 
     /**
      * Registers a native (Java-backed) function callable from Larv code.

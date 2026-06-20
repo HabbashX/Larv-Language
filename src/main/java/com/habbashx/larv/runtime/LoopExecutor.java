@@ -24,6 +24,7 @@ import org.jetbrains.annotations.NotNull;
  * </ul>
  * Any other exception propagates up unchanged.</p>
  */
+@Deprecated(since = "1.1.0") // unused by compiler
 public class LoopExecutor {
 
     /**
@@ -31,6 +32,7 @@ public class LoopExecutor {
      * Provided by {@link StatementExecutor#runBlock}.
      */
     @FunctionalInterface
+    @Deprecated(since = "1.1.0") // unused by compiler
     public interface BlockRunner {
         /**
          * @param body the list of statements to run as a scoped block
@@ -42,6 +44,7 @@ public class LoopExecutor {
      * A boolean-yielding guard evaluated before each loop iteration.
      */
     @FunctionalInterface
+    @Deprecated(since = "1.1.0") // unused by compiler
     public interface Condition {
         /**
          * @return {@code true} while the loop should continue
@@ -54,6 +57,7 @@ public class LoopExecutor {
      * Used only by {@code for} loops; {@code while} loops pass a no-op.
      */
     @FunctionalInterface
+    @Deprecated(since = "1.1.0") // unused by compiler
     public interface PostStep {
         /** Runs the post-iteration action. */
         void run();
@@ -93,8 +97,6 @@ public class LoopExecutor {
     public void runFor(Condition condition, List<Statement> body, PostStep postStep) {
         runLoop(condition, body, postStep);
     }
-
-    // ── Core loop ─────────────────────────────────────────────────────────────
 
     /**
      * The shared loop kernel.

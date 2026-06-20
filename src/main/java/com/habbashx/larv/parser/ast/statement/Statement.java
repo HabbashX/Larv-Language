@@ -11,34 +11,7 @@ package com.habbashx.larv.parser.ast.statement;
  *   <li>{@link EnumStatement}     — {@code enum Name { A, B, C }}</li>
  * </ul>
  */
-public sealed interface Statement permits
-        AssignStatement,
-        BlockStatement,
-        BreakStatement,
-        ClassStatement,
-        CompoundAssignStatement,
-        ConstStatement,
-        ContinueStatement,
-        DecrementStatement,
-        EnumStatement,
-        ExprStatement,
-        ForStatement,
-        ForeachStatement,
-        FunctionStatement,
-        IfStatement,
-        ImportStatement,
-        IncrementStatement,
-        IndexAssignStatement,
-        JavaBindStatement,
-        LetStatement,
-        ModuleStatement,
-        PrintStatement,
-        ReturnStatement,
-        SetFieldStatement,
-        SwitchStatement,
-        ThrowStatement,
-        TryCatchStatement,
-        WhileStatement {
+public sealed interface Statement permits AssignStatement, AtomicStatement, BlockStatement, BreakStatement, ClassStatement, CompoundAssignStatement, ConstStatement, ContinueStatement, DecrementStatement, DeferStatement, EnumStatement, ExprStatement, ForStatement, ForeachStatement, FunctionStatement, IfStatement, ImportStatement, IncrementStatement, IndexAssignStatement, JavaBindStatement, ModuleStatement, PrintStatement, ReturnStatement, SetFieldStatement, SwitchStatement, ThrowStatement, TryCatchStatement, VarStatement, WhileStatement {
 
     /**
      * Returns the 1-based source line where this statement begins.

@@ -7,11 +7,8 @@ import java.util.List;
  *
  * <p>Syntax:</p>
  * <pre>
- *   class ClassName {
- *       func init(params) { ... }
- *       func methodName(params) { ... }
- *       ...
- *   }
+ *   class ClassName { ... }
+ *   class ChildClass : ParentClass { ... }   // inheritance
  * </pre>
  *
  * <p>When executed, the class is registered in the
@@ -22,9 +19,15 @@ import java.util.List;
  * <p>The special method {@code init} acts as the constructor: it is called
  * automatically during {@code new} with the provided arguments.</p>
  *
- * @param name the class name
- * @param body the statements inside the class body (typically function declarations)
- * @param line the 1-based source line of the {@code class} keyword
+ * @param name           the class name
+ * @param superclassName the name of the parent class, or {@code null} if none
+ * @param body           the statements inside the class body
+ * @param line           the 1-based source line of the {@code class} keyword
  */
-public record ClassStatement(String name, List<Statement> body, int line) implements Statement {
+public record ClassStatement(String name, String superclassName, List<Statement> body, int line) implements Statement {
+
+    /** Convenience constructor for a class with no superclass. */
+    public ClassStatement(String name, List<Statement> body, int line) {
+        this(name, null, body, line);
+    }
 }

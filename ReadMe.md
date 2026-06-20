@@ -1,178 +1,237 @@
 # Larv
 
-**Larv** is a dynamically-typed, interpreted scripting language that runs on the JVM. It is written in Java and designed to be expressive and readable, with a clean C-style syntax, first-class functions, object-oriented programming through classes, a rich standard library, and a seamless Java interoperability (FFI) layer that lets you call any Java class from Larv code.
+A statically-compiled, dynamically-typed programming language that runs on the JVM. Larv compiles directly to JVM bytecode via ASM, supports a full interpreter for scripting mode, and provides a rich standard library out of the box.
 
-> **Version:** 1.0.2-beta  
-> **Author:** Abd Allah Al Habbash ([@Habbashx](https://github.com/Habbashx))  
-> **File extension:** `.larv`
+## Version
+1.1.0-beta
+
+### Write once, run everywhere
+
+```larv
+import "string"
+
+class Greeter {
+    func init(name) {
+        this.name = name
+    }
+
+    func greet() {
+        print("Hello, " + strUpper(this.name) + "!")
+    }
+}
+
+var g = new Greeter("world")
+g.greet()
+```
 
 ---
 
 ## Table of Contents
 
-- [Features](#features)
-- [Installation & Building](#installation--building)
-- [Running a Larv Program](#running-a-larv-program)
-- [Language Overview](#language-overview)
-    - [Variables](#variables)
-    - [Data Types](#data-types)
-    - [Operators](#operators)
-    - [Control Flow](#control-flow)
-    - [Functions](#functions)
-    - [Classes & Objects](#classes--objects)
-    - [Arrays](#arrays)
-    - [Modules](#modules)
-    - [Imports](#imports)
-    - [Error Handling](#error-handling)
-    - [Enums](#enums)
-    - [Java Interop (FFI)](#java-interop-ffi)
+- [Installation](#installation)
+- [Running Larv](#running-larv)
+- [Language Basics](#language-basics)
+  - [Variables and Constants](#variables-and-constants)
+  - [Data Types](#data-types)
+  - [Operators](#operators)
+  - [String Concatenation](#string-concatenation)
+  - [Nil](#nil)
+- [Type Annotations](#type-annotations)
+- [Control Flow](#control-flow)
+  - [If / Else](#if--else)
+  - [Ternary Expression](#ternary-expression)
+  - [While](#while)
+  - [Traditional For](#traditional-for)
+  - [For-in (Foreach)](#for-in-foreach)
+  - [Map Iteration](#map-iteration)
+  - [Switch](#switch)
+  - [Break and Continue](#break-and-continue)
+- [Functions](#functions)
+  - [Function Modifiers](#function-modifiers)
+  - [Return Types](#return-types)
+- [Classes](#classes)
+  - [Fields and Methods](#fields-and-methods)
+  - [Constructor](#constructor)
+  - [this](#this)
+  - [Inheritance](#inheritance)
+  - [Method Modifiers](#method-modifiers)
+  - [Property Accessors](#property-accessors)
+- [Modules](#modules)
+- [Enums](#enums)
+- [Concurrency](#concurrency)
+  - [Atomic Variables](#atomic-variables)
+  - [Volatile Variables](#volatile-variables)
+  - [Synchronized Functions](#synchronized-functions)
+- [Defer](#defer)
+- [Error Handling](#error-handling)
+- [Imports](#imports)
+  - [Stdlib Imports](#stdlib-imports)
+  - [File Imports](#file-imports)
+- [Java Interop (FFI)](#java-interop-ffi)
 - [Standard Library](#standard-library)
-- [CLI Reference](#cli-reference)
-- [License](#license)
+  - [math](#math)
+  - [string](#string)
+  - [list](#list)
+  - [map](#map)
+  - [io](#io)
+  - [path](#path)
+  - [json](#json)
+  - [date](#date)
+  - [http](#http)
+  - [regex](#regex)
+  - [base64 / encode](#base64--encode)
+  - [properties](#properties)
+  - [system](#system)
+  - [convert](#convert)
+  - [jdbc](#jdbc)
+  - [socket](#socket)
+  - [serverSocket](#serversocket)
+  - [thread](#thread)
+- [Compiler](#compiler)
+  - [Compile a File](#compile-a-file)
+  - [Compiler Options](#compiler-options)
+  - [Debug Mode](#debug-mode)
+  - [How It Works](#how-it-works)
+- [Project Structure](#project-structure)
 
 ---
 
-## Features
+## Installation
 
-- **Dynamic typing** — variables hold any value; no type annotations required
-- **First-class functions** — functions are values; can be passed, stored, and returned
-- **Object-oriented** — `class` declarations with fields, methods, and an `init` constructor
-- **Modules** — group related declarations into named namespaces
-- **File imports** — split code across multiple `.larv` files using `import`
-- **Error handling** — `try / catch / finally` and `throw`
-- **Enums** — named variant sets with `enum`
-- **Switch expressions** — multi-branch matching with optional `default`
-- **Java FFI** — bind and call any Java class directly with `include ... from`
-- **Raw (multi-line) strings** — `"""..."""` triple-quote syntax
-- **Rich standard library** — math, strings, I/O, lists, maps, HTTP, regex, date/time, encoding, type conversion, system, and properties
-- **Built-in array methods** — `push`, `pop`, `peek`, `slice`, `join`, and more via dot syntax
-- **Ternary operator** — `condition ? thenValue, elseValue`
-- **Compound assignment** — `+=`, `-=`, `*=`, `/=`
-- **`for … in`** — range-based foreach loop
-- **`range()`** — Python-style numeric range generation
+Larv requires **Java 21** or later.
 
----
-
-## Installation & Building
-
-Larv is a Maven project. You need **Java 21+** and **Maven** installed.
+Build from source with Maven:
 
 ```bash
-git clone https://github.com/Habbashx/larv.git
+git clone https://github.com/habbashx/larv
 cd larv
-mvn package -q
+mvn package
 ```
 
-This produces a fat JAR at `target/larv-1.0.0-beta.jar` (exact name depends on the POM configuration). The `MANIFEST.MF` sets the main class, so the JAR is directly executable.
+The resulting JAR is at `target/larv.jar`.
 
-You can create a wrapper script for convenience:
+---
 
+## Running Larv
+
+**Interpreter (scripting) mode — run a `.larv` file directly:**
 ```bash
-#!/usr/bin/env bash
-# /usr/local/bin/larv
-exec java -jar /path/to/larv-1.0.0-beta.jar "$@"
+java -jar larv.jar run Main.larv
 ```
 
+**Compiler mode — compile to `.class` files then run:**
 ```bash
-chmod +x /usr/local/bin/larv
+java -jar larv.jar compile Main.larv --run
+```
+
+**Compile only (write `.class` files to disk):**
+```bash
+java -jar larv.jar compile Main.larv --out ./out
 ```
 
 ---
 
-## Running a Larv Program
+## Language Basics
 
-```bash
-# Execute a source file
-larv run hello.larv
-
-# Print the interpreter version
-larv --version
-
-# Print creator info
-larv --creator
-```
-
-A minimal `hello.larv`:
+### Variables and Constants
 
 ```larv
-print("Hello, World!")
+var name = "Alice"
+var age  = 30
+var active = true
+
+const PI = 3.14159
+const APP_NAME = "Larv"
 ```
 
----
-
-## Language Overview
-
-### Variables
-
-```larv
-var name = "Larv"       // mutable variable
-const PI = 3.14159      // immutable constant (write-once)
-var x                   // declared without a value → nil
-```
-
-Variables are dynamically typed. `var` is mutable; `const` enforces a single assignment.
-
----
+Variables declared with `var` are mutable. Constants declared with `const` cannot be reassigned.
 
 ### Data Types
 
-| Type    | Example                          | Notes                            |
-|---------|----------------------------------|----------------------------------|
-| Number  | `42`, `3.14`, `-7`               | All numbers are 64-bit doubles   |
-| String  | `"hello"`, `"line\none"`         | Escape sequences: `\n \t \r \\` `\"` |
-| Raw String | `"""multi\nline"""`           | No escape processing; verbatim   |
-| Boolean | `true`, `false`                  |                                  |
-| Nil     | `nil`                            | Absence of a value               |
-| Array   | `[1, 2, 3]`                      | Heterogeneous, zero-indexed      |
-| Object  | `new Point()`                    | Instance of a user-defined class |
+| Type    | Example                        |
+|---------|--------------------------------|
+| Number  | `42`, `3.14`, `-7`             |
+| String  | `"hello"`, `'world'`           |
+| Boolean | `true`, `false`                |
+| Nil     | `nil`                          |
+| Object  | `new MyClass()`                |
 
----
+Raw (multi-line) strings use backticks:
+```larv
+var sql = `SELECT *
+           FROM users
+           WHERE active = true`
+```
 
 ### Operators
 
-**Arithmetic**
+| Category   | Operators                              |
+|------------|----------------------------------------|
+| Arithmetic | `+`  `-`  `*`  `/`                     |
+| Comparison | `==`  `!=`  `<`  `>`  `<=`  `>=`      |
+| Logical    | `&&`  `\|\|`  `!`                      |
+| Assignment | `=`  `+=`  `-=`  `*=`  `/=`           |
+| Increment  | `++`  `--`                             |
+
+### String Concatenation
+
+The `+` operator concatenates when either operand is a string:
 
 ```larv
-x + y    x - y    x * y    x / y
-x++      x--
-x += 5   x -= 2   x *= 3   x /= 4
+var msg = "Hello, " + "world"
+var info = "Age: " + 30        // "Age: 30"
 ```
 
-**Comparison**
+### Nil
+
+`nil` represents the absence of a value. Variables declared without an initial value are `nil`.
 
 ```larv
-x == y   x != y   x < y   x > y   x <= y   x >= y
-```
-
-**Logical**
-
-```larv
-a && b    a || b    !a
-```
-
-**Ternary**
-
-```larv
-var label = score >= 50 ? "pass", "fail"
+var x         // x is nil
+var y = nil
 ```
 
 ---
 
-### Control Flow
+## Type Annotations
 
-**if / else if / else**
+Variables, constants, and function parameters can carry optional type annotations after a `:`. The type is checked at compile time — a mismatch is a compile error.
 
 ```larv
-if x > 0 {
-    print("positive")
-} else if x == 0 {
-    print("zero")
-} else {
-    print("negative")
+var score: int = 0
+var name: string = "Alice"
+const MAX: int = 100
+
+func greet(name: string) -> string {
+    return "Hello, " + name
 }
 ```
 
-**while**
+Supported types: `int`, `double`, `float`, `long`, `string`, `bool`, `any` (the default — no checking).
+
+---
+
+## Control Flow
+
+### If / Else
+
+```larv
+if age >= 18 {
+    print("adult")
+} else if age >= 13 {
+    print("teen")
+} else {
+    print("child")
+}
+```
+
+### Ternary Expression
+
+```larv
+var label = age >= 18 ? "adult", "minor"
+```
+
+### While
 
 ```larv
 var i = 0
@@ -182,7 +241,7 @@ while i < 10 {
 }
 ```
 
-**Traditional for**
+### Traditional For
 
 ```larv
 for i = 0; i < 5; i++ {
@@ -190,84 +249,144 @@ for i = 0; i < 5; i++ {
 }
 ```
 
-**for … in (foreach)**
+### For-in (Foreach)
+
+Iterate over any list:
 
 ```larv
 var fruits = ["apple", "banana", "cherry"]
+
 for fruit in fruits {
     print(fruit)
 }
+```
 
-// Works with range() too
-for n in range(5) {
-    print(n)   // 0 1 2 3 4
+### Map Iteration
+
+Iterate over a map's key-value pairs using two loop variables separated by a comma:
+
+```larv
+var scores = Map("Alice", 95, "Bob", 87)
+
+for name, score in scores {
+    print(name + " scored " + score)
 }
 ```
 
-**break / continue**
+The first variable receives the key and the second receives the value on every iteration.
+
+### Switch
+
+Multiple values on a single `case` act as OR conditions. No fall-through between cases.
 
 ```larv
-for i in range(10) {
+switch status {
+    case "active", "enabled" : {
+        print("running")
+    }
+    case "paused" : {
+        print("paused")
+    }
+    default : {
+        print("unknown status")
+    }
+}
+```
+
+### Break and Continue
+
+```larv
+for i = 0; i < 10; i++ {
     if i == 3 { continue }
     if i == 7 { break }
     print(i)
 }
 ```
 
-**switch**
+---
+
+## Functions
 
 ```larv
-switch day {
-    case "Mon", "Tue", "Wed", "Thu", "Fri" : {
-        print("Weekday")
-    }
-    case "Sat", "Sun" : {
-        print("Weekend")
-    }
-    default : {
-        print("Unknown day")
-    }
+func add(a, b) {
+    return a + b
+}
+
+var result = add(3, 4)   // 7
+```
+
+Functions are first-class values — they can be stored in variables and passed as arguments:
+
+```larv
+func apply(f, x) {
+    return f(x)
+}
+
+func double(n) {
+    return n * 2
+}
+
+print(apply(double, 5))   // 10
+```
+
+Recursive functions work as expected:
+
+```larv
+func fib(n) {
+    if n <= 1 { return n }
+    return fib(n - 1) + fib(n - 2)
 }
 ```
 
-Multiple comma-separated values on a single `case` arm act as OR conditions.
+### Function Modifiers
+
+Three modifiers can appear before `func`:
+
+**`sync`** — the function body executes under a per-function lock. Only one thread can be inside it at a time:
+
+```larv
+sync func increment() {
+    this.count += 1
+}
+```
+
+**`core`** — the function cannot be overridden by subclasses (compiles to a `final` JVM method):
+
+```larv
+core func validate(input) {
+    return input != nil
+}
+```
+
+**`override`** — explicitly marks the function as overriding a parent class method:
+
+```larv
+override func speak() {
+    print("Woof!")
+}
+```
+
+Modifiers can be combined: `sync override func save() { ... }`
+
+### Return Types
+
+Declare the return type after `->`. The compiler verifies that the returned value matches:
+
+```larv
+func square(n: int) -> int {
+    return n * n
+}
+
+func fullName(first: string, last: string) -> string {
+    return first + " " + last
+}
+```
 
 ---
 
-### Functions
+## Classes
 
-```larv
-func greet(name) {
-    return "Hello, " + name + "!"
-}
-
-print(greet("World"))
-```
-
-Functions are first-class values and can be stored in variables or passed as arguments:
-
-```larv
-func apply(fn, value) {
-    return fn(value)
-}
-
-func double(x) { return x * 2 }
-
-print(apply(double, 21))   // 42
-```
-
-Recursion is fully supported:
-
-```larv
-func factorial(n) {
-    if n <= 1 { return 1 }
-    return n * factorial(n - 1)
-}
-```
-
----
-
-### Classes & Objects
+### Fields and Methods
 
 ```larv
 class Animal {
@@ -281,441 +400,924 @@ class Animal {
     }
 }
 
-var dog = new Animal("Dog", "Woof")
-dog.speak()             // Dog says Woof
-print(dog.name)         // Dog
-dog.name = "Buddy"      // Field assignment
+var dog = new Animal("Rex", "woof")
+dog.speak()
 ```
 
-The `init` method is the constructor. It is called automatically when `new ClassName(args)` is evaluated. Fields are set with `this.field = value`.
+### Constructor
 
----
+The `init` method is the constructor. It is called automatically when the object is created with `new`. Any number of parameters are supported.
 
-### Arrays
+### this
 
-Arrays are zero-indexed and heterogeneous.
+Inside any method, `this` refers to the current object instance. Use it to read and write instance fields.
 
 ```larv
-var arr = [10, "hello", true, nil]
+class Counter {
+    func init() {
+        this.count = 0
+    }
 
-// Index access and assignment
-print(arr[0])        // 10
-arr[1] = "world"
+    func increment() {
+        this.count += 1
+    }
 
-// Built-in dot methods
-arr.push(99)
-var last = arr.pop()
-var size = len(arr)
-
-arr.reverse()
-var sub  = arr.slice(1, 3)
-var text = arr.join(", ")
+    func value() {
+        return this.count
+    }
+}
 ```
 
-Built-in array methods: `push`, `pop`, `peek`, `first`, `last`, `contains`, `indexOf`, `isEmpty`, `clear`, `reverse`, `remove`, `slice`, `join`.
+### Inheritance
 
----
-
-### Modules
-
-Modules are named namespaces that group related declarations. Access members with `ModuleName.member`.
+A class can extend another class using `:` after the class name. The child class inherits all methods from the parent and can add or override them:
 
 ```larv
-module Geometry {
-    const PI = 3.14159
+class Animal {
+    func init(name) {
+        this.name = name
+    }
 
-    func circleArea(r) {
-        return PI * r * r
+    func speak() {
+        print(this.name + " makes a sound")
     }
 }
 
-print(Geometry.circleArea(5))
+class Dog : Animal {
+    func init(name) {
+        this.name = name
+    }
+
+    override func speak() {
+        print(this.name + " barks!")
+    }
+}
+
+var d = new Dog("Rex")
+d.speak()   // Rex barks!
+```
+
+### Method Modifiers
+
+The same `sync`, `core`, and `override` modifiers that apply to top-level functions apply inside class bodies with the same semantics — `sync` synchronizes on the receiver instance, `core` makes the method non-overridable, `override` declares an intentional override.
+
+### Property Accessors
+
+Variables can be declared with `get` and `set` accessors:
+
+```larv
+var score = 0 : get, set
+const VERSION = "1.0" : get
 ```
 
 ---
 
-### Imports
+## Modules
 
-**Standard library import:**
-
-```larv
-import "math"
-print(sqrt(16))    // 4.0
-```
-
-**File import** (dot-separated relative path, `.larv` extension is implied):
+Modules are singleton namespaces — unlike classes they are not instantiated with `new`.
 
 ```larv
-import "utils.helpers"   // loads ./utils/helpers.larv
-```
+module Config {
+    var host = "localhost"
+    var port = 8080
 
-File imports bring the top-level declarations of the other file into scope.
+    func url() {
+        return "http://" + host + ":" + port
+    }
+}
+
+print(Config.url())
+```
 
 ---
 
-### Error Handling
+## Enums
+
+```larv
+enum Direction { NORTH, SOUTH, EAST, WEST }
+enum Status    { ACTIVE, INACTIVE, PENDING }
+
+var dir = Direction.NORTH
+print(dir)   // NORTH
+```
+
+---
+
+## Concurrency
+
+### Atomic Variables
+
+`atomic<type>` declares a thread-safe variable backed by a Java `AtomicReference`. Reads and writes are guaranteed to be atomic across threads:
+
+```larv
+atomic<int> counter = 0
+atomic<bool> running = true
+atomic<string> status
+```
+
+### Volatile Variables
+
+`volatile var` declares a variable whose value is always read from and written to main memory — no thread-local caching. Use this for simple flags shared between threads when you don't need the full atomic read-modify-write guarantee:
+
+```larv
+volatile var active = true
+
+// another thread can set active = false and this thread will see it immediately
+while active {
+    doWork()
+}
+```
+
+`volatile` is only allowed on class fields.
+
+### Synchronized Functions
+
+Mark a function with `sync` to ensure exclusive access. On top-level functions a per-function lock is used; inside classes the receiver object is the monitor:
+
+```larv
+class BankAccount {
+    func init(balance) {
+        this.balance = balance
+    }
+
+    sync func deposit(amount) {
+        this.balance += amount
+    }
+
+    sync func withdraw(amount) {
+        this.balance -= amount
+    }
+}
+```
+
+---
+
+## Defer
+
+`defer` schedules an expression to run when the enclosing scope exits, in LIFO order relative to other defers in the same scope. It mirrors Go's `defer` and is the idiomatic way to close resources:
+
+```larv
+var file = openFile("data.txt")
+defer file.close()
+
+// use file ...
+// file.close() runs automatically here, even if an error is thrown
+```
+
+Multiple defers in the same scope execute in reverse order:
+
+```larv
+defer print("third")
+defer print("second")
+defer print("first")
+// prints: first, second, third
+```
+
+---
+
+## Error Handling
+
+### try / catch / finally
 
 ```larv
 try {
     var result = riskyOperation()
 } catch (e) {
-    printErr("Error: " + e)
+    print("caught: " + e)
 } finally {
-    print("Cleanup done")
+    print("always runs")
 }
 ```
 
-`throw` can throw any value:
+`catch` and `finally` are both optional, but at least one must be present. The caught variable `e` holds the error message string or the thrown value.
+
+### throw
 
 ```larv
 func divide(a, b) {
     if b == 0 {
-        throw "Division by zero"
+        throw "division by zero"
     }
     return a / b
 }
 
 try {
-    print(divide(10, 0))
-} catch (err) {
-    print("Caught: " + err)
+    divide(10, 0)
+} catch (e) {
+    print(e)   // "division by zero"
 }
 ```
 
----
-
-### Enums
-
-```larv
-enum Direction { NORTH, SOUTH, EAST, WEST }
-
-var heading = Direction.NORTH
-print(heading)    // NORTH
-```
-
-Enum variants are accessed with `EnumName.VARIANT` dot syntax.
+Any value can be thrown — strings, numbers, objects.
 
 ---
 
-### Java Interop (FFI)
+## Imports
 
-Larv can bind and call any Java class on the classpath.
-
-**Static binding** (only static methods):
+### Stdlib Imports
 
 ```larv
-include JMath from "java.lang.Math"
-print(JMath.sqrt(9))      // 3.0
-print(JMath.PI)           // 3.141592653589793
+import "math"
+import "string"
+import "io"
+import "json"
 ```
 
-**Instance binding with constructor arguments** (`involve`):
+After importing, the library's functions are available directly:
+
+```larv
+import "math"
+
+print(sqrt(16))    // 4
+print(pow(2, 10))  // 1024
+```
+
+### File Imports
+
+Import classes and functions from other `.larv` files using a dotted path. The path is resolved relative to the project root.
+
+```larv
+// main.larv
+import "services.UserService"
+
+var svc = new UserService("db")
+svc.createUser("Alice")
+```
+
+```larv
+// services/UserService.larv
+import "jdbc"
+
+class UserService {
+    func init(alias) {
+        this.alias = alias
+    }
+
+    func createUser(name) {
+        dbInsert(this.alias, "users", {"name": name})
+    }
+}
+```
+
+File imports are **circular-import safe** — importing the same file twice is a no-op. Only top-level class and function declarations are imported; top-level executable statements in the imported file do not run.
+
+---
+
+## Java Interop (FFI)
+
+Bind any Java class and call its methods directly from Larv using `include ... from`.
+
+**Static binding** — access static methods:
+
+```larv
+include Math from "java.lang.Math"
+
+print(Math.sqrt(144))    // 12.0
+print(Math.PI)
+```
+
+**Instance binding** — create a Java object using `involve`:
 
 ```larv
 include scanner from "java.util.Scanner" involve {
     "java.lang.System.in"
 }
+
 var line = scanner.nextLine()
 print("You typed: " + line)
 ```
 
-Static field references (`"java.lang.System.in"`) and nested constructions are resolved automatically inside the `involve { }` block.
+The `involve` block accepts the constructor arguments as strings. Larv resolves:
+- Static fields like `"java.lang.System.in"` to their actual values
+- Numeric strings like `"1024"` to the appropriate primitive type
+- Class constructor strings like `"some.Class(arg)"` to new instances
 
 ---
 
 ## Standard Library
 
-Import a module once per file to activate its functions.
-
-### Core (always available — no import needed)
-
-| Function | Signature | Description |
-|---|---|---|
-| `print` | `print(value)` | Print to stdout with newline |
-| `printErr` | `printErr(value)` | Print to stderr in red |
-| `input` | `input()` | Read a line from stdin |
-| `len` | `len(array)` | Length of an array |
-| `range` | `range(end)` / `range(start, end)` | Generate a numeric list |
+All stdlib functions are available after importing the relevant library name.
 
 ---
 
-### `import "math"`
+### math
 
-| Function | Description |
-|---|---|
-| `sqrt(n)` | Square root |
-| `pow(base, exp)` | Exponentiation |
-| `abs(n)` | Absolute value |
-| `floor(n)` | Round down |
-| `ceil(n)` | Round up |
-| `round(n)` | Round to nearest integer |
-| `max(a, b)` | Larger of two values |
-| `min(a, b)` | Smaller of two values |
-| `log(n)` | Natural logarithm |
-| `log10(n)` | Base-10 logarithm |
-| `sin(n)` | Sine (radians) |
-| `cos(n)` | Cosine (radians) |
-| `tan(n)` | Tangent (radians) |
-| `asin(n)` | Arc sine |
-| `acos(n)` | Arc cosine |
-| `atan(n)` | Arc tangent |
-| `atan2(y, x)` | Two-argument arc tangent |
-| `toRadians(deg)` | Degrees → radians |
-| `toDegrees(rad)` | Radians → degrees |
-| `random()` | Random float in [0, 1) |
-| `randomInt(bound)` | Random integer in [0, bound) |
-| `clamp(n, min, max)` | Clamp n between min and max |
-| `sign(n)` | -1, 0, or 1 |
-| `pi()` | π constant |
-| `e()` | e constant |
-| `isNaN(n)` | True if NaN |
-| `isInfinite(n)` | True if infinite |
-| `toInt(n)` | Truncate to integer |
+```larv
+import "math"
 
----
-
-### `import "string"`
-
-| Function | Description |
-|---|---|
-| `strLen(s)` | Character count |
-| `strUpper(s)` | Uppercase |
-| `strLower(s)` | Lowercase |
-| `strTrim(s)` | Strip leading/trailing whitespace |
-| `strTrimLeft(s)` | Strip leading whitespace |
-| `strTrimRight(s)` | Strip trailing whitespace |
-| `strContains(s, sub)` | True if sub is found |
-| `strStartsWith(s, prefix)` | True if starts with prefix |
-| `strEndsWith(s, suffix)` | True if ends with suffix |
-| `strIndexOf(s, sub)` | First index of sub, or -1 |
-| `strSlice(s, from, to)` | Substring [from, to) |
-| `strReplace(s, old, new)` | Replace first occurrence |
-| `strReplaceAll(s, old, new)` | Replace all occurrences |
-| `strSplit(s, delim)` | Split into array |
-| `strJoin(array, sep)` | Join array with separator |
-| `strRepeat(s, n)` | Repeat string n times |
-| `strReverse(s)` | Reverse characters |
-| `strCharAt(s, i)` | Character at index i |
-| `strToNumber(s)` | Parse string to number |
-| `strFromNumber(n)` | Convert number to string |
-| `strIsEmpty(s)` | True if empty |
-| `strPadLeft(s, width, char)` | Left-pad to width |
-| `strPadRight(s, width, char)` | Right-pad to width |
-| `strChars(s)` | Array of individual characters |
-
----
-
-### `import "io"`
-
-| Function | Description |
-|---|---|
-| `readFile(path)` | Read file as string |
-| `writeFile(path, content)` | Write string to file (overwrites) |
-| `appendFile(path, content)` | Append string to file |
-| `readLines(path)` | Read file as array of lines |
-| `readBytes(path)` | Read file as byte array |
-| `writeBytes(path, bytes)` | Write byte array to file |
-| `deleteFile(path)` | Delete a file |
-| `fileExists(path)` | True if file exists |
-| `isDir(path)` | True if path is a directory |
-| `listDir(path)` | Array of filenames in directory |
-| `makeDir(path)` | Create directory (and parents) |
-| `copyFile(src, dst)` | Copy a file |
-| `moveFile(src, dst)` | Move/rename a file |
-| `fileSize(path)` | File size in bytes |
-| `cwd()` | Current working directory |
-| `absPath(path)` | Absolute path |
-
----
-
-### `import "list"`
-
-| Function | Description |
-|---|---|
-| `listNew()` | Create an empty list |
-| `listAdd(list, value)` | Append value |
-| `listAddAt(list, index, value)` | Insert at index |
-| `listRemove(list, index)` | Remove element at index |
-| `listGet(list, index)` | Get element at index |
-| `listSet(list, index, value)` | Set element at index |
-| `listSize(list)` | Number of elements |
-| `listContains(list, value)` | True if value is present |
-| `listIndexOf(list, value)` | First index of value, or -1 |
-| `listSlice(list, from, to)` | Sub-list [from, to) |
-| `listReverse(list)` | Reverse in place |
-| `listSort(list)` | Sort in place |
-| `listConcat(a, b)` | Concatenate two lists |
-| `listFlat(list)` | Flatten one level of nesting |
-| `listUnique(list)` | Remove duplicates |
-| `listFill(value, n)` | Create list of n copies of value |
-| `listClear(list)` | Remove all elements |
-| `listIsEmpty(list)` | True if empty |
-| `listFirst(list)` | First element |
-| `listLast(list)` | Last element |
-| `listPop(list)` | Remove and return last element |
-| `listShuffle(list)` | Shuffle in place |
-
----
-
-### `import "map"`
-
-| Function | Description |
-|---|---|
-| `mapNew()` | Create an empty map |
-| `mapSet(map, key, value)` | Set a key |
-| `mapGet(map, key)` | Get a value (nil if missing) |
-| `mapHas(map, key)` | True if key exists |
-| `mapRemove(map, key)` | Remove a key |
-| `mapSize(map)` | Number of entries |
-| `mapKeys(map)` | Array of all keys |
-| `mapValues(map)` | Array of all values |
-| `mapClear(map)` | Remove all entries |
-| `mapIsEmpty(map)` | True if empty |
-| `mapMerge(a, b)` | Merge b into a (b wins on conflict) |
-| `mapContainsValue(map, value)` | True if value is in the map |
-| `mapToList(map)` | Array of `[key, value]` pairs |
-
----
-
-### `import "http"`
-
-Returns a map with keys `status` (number), `body` (string), and `ok` (boolean).
-
-| Function | Description |
-|---|---|
-| `httpGet(url)` | HTTP GET |
-| `httpPost(url, body)` | HTTP POST (plain text) |
-| `httpPostJson(url, body)` | HTTP POST (JSON content type) |
-| `httpPut(url, body)` | HTTP PUT |
-| `httpDelete(url)` | HTTP DELETE |
-| `httpRequest(url, method, contentType, body, headers)` | Full custom request |
-
----
-
-### `import "regex"`
-
-| Function | Description |
-|---|---|
-| `regexMatch(input, pattern)` | True if entire input matches pattern |
-| `regexTest(input, pattern)` | True if pattern found anywhere |
-| `regexFind(input, pattern)` | First matching substring |
-| `regexFindAll(input, pattern)` | Array of all matches |
-| `regexReplace(input, pattern, replacement)` | Replace first match |
-| `regexReplaceAll(input, pattern, replacement)` | Replace all matches |
-| `regexSplit(input, pattern)` | Split on pattern |
-| `regexGroup(input, pattern, group)` | Capture group by index |
-| `regexGroups(input, pattern)` | Array of all capture groups |
-
----
-
-### `import "date"`
-
-| Function | Description |
-|---|---|
-| `timestamp()` | Unix timestamp in milliseconds |
-| `dateNow()` | Current date as `"yyyy-MM-dd"` |
-| `timeNow()` | Current time as `"HH:mm:ss"` |
-| `dateTimeNow()` | Current datetime as `"yyyy-MM-dd HH:mm:ss"` |
-| `dateFormat(ts, pattern)` | Format timestamp with pattern |
-| `dateParse(str, pattern)` | Parse date string → timestamp |
-| `dateAdd(str, amount, unit)` | Add time unit to date string |
-| `dateSub(str, amount, unit)` | Subtract time unit from date string |
-| `dateDiff(a, b, unit)` | Difference between two date strings |
-| `dayOfWeek(str)` | Day name (`"Monday"`, etc.) |
-| `monthName(str)` | Month name (`"January"`, etc.) |
-| `year(str)` | Extract year |
-| `month(str)` | Extract month |
-| `day(str)` | Extract day |
-| `hour(str)` | Extract hour |
-| `minute(str)` | Extract minute |
-| `second(str)` | Extract second |
-| `isBefore(a, b)` | True if date a is before b |
-| `isAfter(a, b)` | True if date a is after b |
-
-Time units for `dateAdd`/`dateSub`/`dateDiff`: `"seconds"`, `"minutes"`, `"hours"`, `"days"`, `"weeks"`, `"months"`, `"years"`.
-
----
-
-### `import "encode"` (or `import "base64"`)
-
-| Function | Description |
-|---|---|
-| `base64Encode(str)` | Base64-encode a string |
-| `base64Decode(str)` | Base64-decode a string |
-| `base64EncodeUrl(str)` | URL-safe Base64 encode |
-| `base64DecodeUrl(str)` | URL-safe Base64 decode |
-| `hashMd5(str)` | MD5 hex digest |
-| `hashSha1(str)` | SHA-1 hex digest |
-| `hashSha256(str)` | SHA-256 hex digest |
-| `hashSha512(str)` | SHA-512 hex digest |
-| `hexEncode(str)` | Hex-encode a string |
-| `hexDecode(hex)` | Hex-decode to string |
-| `urlEncode(str)` | Percent-encode for URLs |
-| `urlDecode(str)` | Decode a percent-encoded string |
-
----
-
-### `import "convert"`
-
-| Function | Description |
-|---|---|
-| `toNumber(value)` | Convert to number |
-| `toString(value)` | Convert to string |
-| `toBool(value)` | Convert to boolean (`"true"/"yes"/"1"/"on"` → true) |
-| `toInt(n)` | Truncate floating-point number to integer |
-| `toHex(n)` | Integer → lowercase hex string |
-| `toOctal(n)` | Integer → octal string |
-| `toBinary(n)` | Integer → binary string |
-| `fromHex(str)` | Hex string → number |
-| `fromOctal(str)` | Octal string → number |
-| `fromBinary(str)` | Binary string → number |
-| `toBytes(str)` | String → byte array |
-| `fromBytes(bytes)` | Byte array → string |
-| `typeOf(value)` | String name of the runtime type |
-
----
-
-### `import "system"`
-
-| Function | Description |
-|---|---|
-| `exit(code?)` | Exit the process |
-| `getEnv(name)` | Read an environment variable |
-| `getArgs()` | Array of command-line arguments |
-| `clock()` | Elapsed JVM time in milliseconds |
-| `nanoTime()` | Elapsed JVM time in nanoseconds |
-| `sleep(ms)` | Pause execution for ms milliseconds |
-| `exec(cmd)` | Run a shell command; returns `{exit, out, err, ok}` |
-| `osName()` | Operating system name |
-| `osArch()` | CPU architecture |
-| `freeMemory()` | Free JVM heap in bytes |
-| `totalMemory()` | Total JVM heap in bytes |
-| `gc()` | Suggest a JVM garbage collection |
-
----
-
-### `import "properties"`
-
-| Function | Description |
-|---|---|
-| `loadProp(file)` | Load a `.properties` file |
-| `getProp(key)` | Get a property value |
-| `setProp(file, key, value)` | Set a property value |
-| `saveProp(file)` | Save properties to file |
-| `getAllProps()` | Map of all properties |
-
----
-
-## CLI Reference
-
-```
-larv run <file.larv>     Execute a Larv source file
-larv --version           Print interpreter version
-larv --creator           Print creator information
+sqrt(x)           // square root
+pow(base, exp)    // exponentiation
+abs(x)            // absolute value
+floor(x)          // round down
+ceil(x)           // round up
+round(x)          // round to nearest
+min(a, b)         // smaller of two
+max(a, b)         // larger of two
+log(x)            // natural log
+log10(x)          // base-10 log
+sin(x)            // trigonometric sine
+cos(x)            // cosine
+tan(x)            // tangent
+asin(x)           // arc sine
+acos(x)           // arc cosine
+atan(x)           // arc tangent
+atan2(y, x)       // two-argument arc tangent
+toRadians(deg)    // degrees → radians
+toDegrees(rad)    // radians → degrees
+random()          // random float in [0, 1)
+randomInt(lo, hi) // random integer in [lo, hi]
+clamp(n, lo, hi)  // clamp n between lo and hi
+sign(x)           // -1, 0, or 1
+pi()              // π
+e()               // Euler's number
+isNaN(x)          // true if NaN
+isInfinite(x)     // true if infinite
+toInt(x)          // truncate to integer
 ```
 
 ---
 
-## License
+### string
 
-[LICENCE](LICENSE.md)
+```larv
+import "string"
+
+strLen(s)                   // length
+strUpper(s)                 // uppercase
+strLower(s)                 // lowercase
+strTrim(s)                  // strip whitespace both sides
+strTrimLeft(s)              // strip leading whitespace
+strTrimRight(s)             // strip trailing whitespace
+strContains(s, sub)         // true if sub is in s
+strStartsWith(s, prefix)    // true if starts with prefix
+strEndsWith(s, suffix)      // true if ends with suffix
+strIndexOf(s, sub)          // first index of sub, or -1
+strSlice(s, from, to)       // substring [from, to)
+strReplace(s, old, new)     // replace first occurrence
+strReplaceAll(s, old, new)  // replace all occurrences
+strSplit(s, sep)             // split into list
+strJoin(list, glue)          // join list into string
+strRepeat(s, n)              // repeat s n times
+strReverse(s)               // reverse the string
+strCharAt(s, i)             // character at index i
+strToNumber(s)              // parse string to number
+strFromNumber(n)            // number to string
+strIsEmpty(s)               // true if blank
+strPadLeft(s, n, ch)        // left-pad to length n
+strPadRight(s, n, ch)       // right-pad to length n
+strChars(s)                 // list of individual characters
+```
+
+---
+
+### list
+
+```larv
+import "list"
+
+listNew()               // create empty list
+listSize(l)             // number of elements
+listIsEmpty(l)          // true if empty
+listAdd(l, val)         // append value
+listAddAt(l, i, val)    // insert at index
+listGet(l, i)           // get element at index
+listSet(l, i, val)      // set element at index
+listRemove(l, i)        // remove element at index
+listContains(l, val)    // true if value exists
+listIndexOf(l, val)     // first index of value
+listSlice(l, from, to)  // sublist [from, to)
+listReverse(l)          // reversed copy
+listSort(l)             // sorted copy (numeric)
+listConcat(a, b)        // join two lists
+listFlat(l)             // flatten one level of nesting
+listUnique(l)           // remove duplicates, preserve order
+listFill(n, val)        // list of n copies of val
+listClear(l)            // remove all elements
+listFirst(l)            // first element or nil
+listLast(l)             // last element or nil
+listPop(l)              // remove and return last element
+listShuffle(l)          // shuffled copy
+```
+
+---
+
+### map
+
+```larv
+import "map"
+
+mapNew()                  // create empty map
+mapSize(m)                // number of entries
+mapIsEmpty(m)             // true if empty
+mapSet(m, key, val)       // set key
+mapGet(m, key)            // get value for key
+mapHas(m, key)            // true if key exists
+mapRemove(m, key)         // delete key
+mapClear(m)               // remove all entries
+mapKeys(m)                // list of keys
+mapValues(m)              // list of values
+mapContainsValue(m, val)  // true if value exists
+mapMerge(a, b)            // merge b into a, return new map
+mapToList(m)              // list of {key, value} maps
+```
+
+---
+
+### io
+
+```larv
+import "io"
+
+readFile(path)              // read file to string
+writeFile(path, content)    // write string to file
+appendFile(path, content)   // append string to file
+readLines(path)             // list of lines
+readBytes(path)             // list of byte values
+writeBytes(path, bytes)     // write byte list to file
+deleteFile(path)            // delete file, true if deleted
+fileExists(path)            // true if path exists
+isDir(path)                 // true if directory
+listDir(path)               // list immediate children
+makeDir(path)               // create directory tree
+copyFile(src, dst)          // copy file
+moveFile(src, dst)          // move/rename file
+fileSize(path)              // size in bytes
+cwd()                       // current working directory
+absPath(path)               // absolute path string
+```
+
+---
+
+### path
+
+```larv
+import "path"
+
+// Construction
+pathJoin(a, b, ...)         // join segments: pathJoin("/usr", "local", "bin")
+pathAbs(p)                  // absolute path
+pathNormalize(p)            // remove . and .. without filesystem access
+pathRelative(base, target)  // express target relative to base
+
+// Decomposition
+pathParent(p)               // parent directory
+pathFileName(p)             // last component with extension
+pathStem(p)                 // last component without extension
+pathExt(p)                  // extension including dot, e.g. ".txt"
+pathParts(p)                // list of all path components
+pathDepth(p)                // number of components
+
+// Predicates
+pathExists(p)               // true if path exists
+pathIsFile(p)               // true if regular file
+pathIsDir(p)                // true if directory
+pathIsAbsolute(p)           // true if absolute
+pathIsRelative(p)           // true if relative
+pathIsHidden(p)             // true if hidden
+pathIsSymlink(p)            // true if symbolic link
+pathIsEmpty(p)              // true if empty dir or zero-byte file
+pathStartsWith(p, prefix)   // path prefix check
+pathEndsWith(p, suffix)     // path suffix check
+pathSame(a, b)              // true if same filesystem entry
+
+// Manipulation (no I/O)
+pathWithExt(p, ext)         // replace extension
+pathWithName(p, name)       // replace filename
+pathWithStem(p, stem)       // replace stem, keep extension
+pathCommon(a, b)            // longest common ancestor path
+
+// Metadata
+pathSize(p)                 // size in bytes
+pathCreated(p)              // creation time in ms since epoch
+pathModified(p)             // last modified time in ms
+pathStat(p)                 // map: {size, created, modified, isFile, isDir, isSymlink, isHidden}
+
+// Directory listing
+pathList(p)                 // immediate children
+pathListAll(p)              // all descendants recursively
+pathGlob(dir, pattern)      // entries matching glob e.g. "**/*.larv"
+pathWalk(p)                 // list of stat maps for all entries
+
+// Filesystem operations
+pathMakeDir(p)              // create directory (parent must exist)
+pathMakeDirs(p)             // create directory and all parents
+pathDelete(p)               // delete file or empty directory
+pathDeleteAll(p)            // recursively delete tree
+pathCopy(src, dst)          // copy (overwrites)
+pathMove(src, dst)          // move/rename (overwrites)
+pathSymlink(link, target)   // create symbolic link
+pathResolveSymlink(p)       // real path after resolving symlinks
+
+// System paths
+pathCwd()                   // current working directory
+pathHome()                  // user home directory
+pathTemp()                  // system temp directory
+pathSep()                   // platform separator ("/" or "\")
+```
+
+---
+
+### json
+
+```larv
+import "json"
+
+jsonStringify(value)        // value → compact JSON string
+jsonPretty(value)           // value → pretty-printed JSON string
+jsonParse(str)              // JSON string → Larv value
+jsonValid(str)              // true if str is valid JSON
+jsonRead(path)              // read and parse a JSON file
+jsonWrite(path, value)      // encode and write JSON to a file
+```
+
+---
+
+### date
+
+```larv
+import "date"
+
+dateNow()                   // current timestamp in ms
+timeNow()                   // current time string
+dateTimeNow()               // current date-time string
+timestamp()                 // Unix timestamp in seconds
+year()                      // current year
+month()                     // current month number
+day()                       // current day of month
+hour()                      // current hour
+minute()                    // current minute
+second()                    // current second
+dayOfWeek()                 // day name e.g. "Monday"
+monthName()                 // month name e.g. "January"
+dateFormat(ms, pattern)     // format timestamp with pattern
+dateParse(str, pattern)     // parse date string to timestamp
+dateAdd(ms, n, unit)        // add n units: "days","hours","minutes","seconds","weeks","months","years"
+dateSub(ms, n, unit)        // subtract n units
+dateDiff(a, b)              // difference in ms
+isAfter(a, b)               // true if a > b
+isBefore(a, b)              // true if a < b
+```
+
+---
+
+### http
+
+```larv
+import "http"
+
+httpGet(url)                     // GET request → {status, body}
+httpPost(url, body)              // POST with plain body
+httpPostJson(url, jsonStr)       // POST with Content-Type: application/json
+httpPut(url, body)               // PUT request
+httpDelete(url)                  // DELETE request
+httpRequest(method, url, body)   // generic request with any method
+```
+
+All functions return a map with `status` (number) and `body` (string).
+
+---
+
+### regex
+
+```larv
+import "regex"
+
+regexMatch(str, pattern)              // true if entire string matches
+regexTest(str, pattern)               // true if pattern is found anywhere
+regexFind(str, pattern)               // true if pattern is found
+regexFindAll(str, pattern)            // list of all matches
+regexGroups(str, pattern)             // list of capture groups from first match
+regexGroup(str, pattern, n)           // nth capture group
+regexReplace(str, pattern, repl)      // replace first match
+regexReplaceAll(str, pattern, repl)   // replace all matches
+regexSplit(str, pattern)              // split on pattern
+```
+
+---
+
+### base64 / encode
+
+```larv
+import "base64"
+
+base64Encode(str)   // encode string to Base64
+base64Decode(str)   // decode Base64 to string
+urlEncode(str)      // percent-encode a URL string
+urlDecode(str)      // decode a percent-encoded string
+hexEncode(str)      // encode string to hex
+hexDecode(hex)      // decode hex to string
+```
+
+---
+
+### properties
+
+```larv
+import "properties"
+
+loadProp(file)       // load a .properties file into memory
+getProp(key)         // get a value from the loaded file
+getAllProps()         // map of all loaded properties
+setProp(key, value)  // set a property in memory
+saveProp(file)       // save current properties back to file
+```
+
+---
+
+### system
+
+```larv
+import "system"
+
+exit(code)          // exit with status code
+getEnv(name)        // read environment variable
+getArgs()           // command-line arguments as list
+clock()             // current time in milliseconds
+nanoTime()          // current time in nanoseconds
+sleep(ms)           // pause for ms milliseconds
+exec(command)       // run shell command → {exit, out, err}
+sh(command)         // shorthand for exec
+osName()            // OS name e.g. "Linux"
+osArch()            // OS architecture e.g. "amd64"
+freeMemory()        // JVM free memory in bytes
+totalMemory()       // JVM total memory in bytes
+gc()                // request garbage collection
+```
+
+---
+
+### convert
+
+```larv
+import "convert"
+
+toInt(x)          // truncate to integer
+toNumber(x)       // parse to number
+toString(x)       // convert to string
+toBool(x)         // convert to boolean ("true","yes","1","on" → true)
+toBytes(x)        // string → list of byte values
+fromBytes(list)   // list of byte values → string
+toBinary(n)       // number → binary string
+fromBinary(s)     // binary string → number
+toHex(n)          // number → hex string (255 → "ff")
+fromHex(s)        // hex string → number
+toOctal(n)        // number → octal string
+fromOctal(s)      // octal string → number
+typeOf(x)         // type name as string: "string", "number", "bool", "list", "map", "nil"
+```
+
+---
+
+### jdbc
+
+Connect to any JDBC-compatible database. The driver JAR must be on the classpath.
+
+```larv
+import "jdbc"
+
+// Connect — any JDBC driver works
+dbOpen("db", "org.postgresql.Driver", "jdbc:postgresql://localhost/mydb", "user", "pass")
+dbOpen("sq", "org.sqlite.JDBC",       "jdbc:sqlite:data.db",              "",     "")
+
+// Parameterised query — always use ? for values
+var rows = dbQuery("db", "SELECT * FROM users WHERE role = ?", ["admin"])
+
+// Execute DDL/DML
+dbExec("db", "CREATE TABLE logs (id SERIAL, msg TEXT)", [])
+
+// Convenience helpers (values always bound as parameters)
+dbInsert("db", "users", {"name": "Alice", "age": 30})
+dbUse("db")                           // set default connection
+dbQueryOne("db", "SELECT * FROM users WHERE id = ?", [1])
+
+// Transactions
+dbBegin("db")
+dbInsert("db", "orders", {"user_id": 1, "total": 99.99})
+dbCommit("db")
+
+// Metadata
+var tables  = dbTables("db")
+var columns = dbColumns("db", "users")
+
+dbClose("db")
+```
+
+---
+
+### socket
+
+```larv
+import "socket"
+
+var s = connect("localhost", 8080)  // open TCP connection
+
+send(s, "Hello server")            // send string
+var reply = receive(s)             // receive string
+var bytes = readBytes(s)           // receive as byte list
+writeBytes(s, byteList)            // send byte list
+
+setKeepAlive(s, true)              // socket options
+setSoTimeout(s, 5000)
+setTcpNoDelay(s, true)
+
+getRemoteAddr(s)                   // remote address string
+close(s)                           // close the connection
+```
+
+---
+
+### serverSocket
+
+```larv
+import "serverSocket"
+
+var server = bind(8080)            // listen on port
+setSoTimeout(server, 30000)        // accept timeout in ms
+var client = accept(server)        // block until a client connects
+getPort(server)                    // port number
+isClosed(server)                   // true if closed
+close(server)                      // stop listening
+```
+
+---
+
+### thread
+
+```larv
+import "thread"
+
+var t = spawn(myFunc)              // run function in a new thread
+threadJoin(t)                      // wait for thread to finish
+threadIsAlive(t)                   // true if still running
+threadId(t)                        // thread ID number
+threadName(t)                      // thread name string
+threadSleep(ms)                    // sleep current thread
+threadCount()                      // active thread count
+cpuCount()                         // available CPU cores
+
+// Channels — communicate between threads
+var ch = channelNew()
+channelSend(ch, "message")
+var msg = channelRecv(ch)          // blocks until a message arrives
+channelClose(ch)
+```
+
+---
+
+## Compiler
+
+Larv has two execution modes: an **interpreter** for quick scripting and a **compiler** that produces real JVM `.class` files.
+
+### Compile a File
+
+```bash
+# Compile and immediately run
+java -jar larv.jar compile Main.larv --run
+
+# Compile to ./out directory
+java -jar larv.jar compile Main.larv --out ./out
+
+# Run the compiled class
+java -cp out Main
+```
+
+### Compiler Options
+
+| Option           | Description                                                       |
+|------------------|-------------------------------------------------------------------|
+| `--out <dir>`    | Output directory for `.class` files (default: `out`)             |
+| `--class <name>` | Override the generated main class name                            |
+| `--dump`         | Print ASM bytecode disassembly to stdout                          |
+| `--run`          | Compile then immediately execute                                  |
+| `--debug`        | Enable debug mode (see below)                                     |
+
+### Debug Mode
+
+Pass `--debug` to enable the compiler's debug mode. It adds three layers of diagnostic output to `stderr` (normal compilation output is unaffected):
+
+**Statement tracing** — every statement is logged before it is compiled, including its Larv type and source line:
+```
+[DEBUG] compileStatement  line=7  type=VarStatement
+[DEBUG]   var  name=x  declared=int  inferred=int  resolvedType=int  slot=1
+```
+
+**Expression tracing** — every expression node, including the operator or value:
+```
+[DEBUG]   compileExpression  type=BinaryExpression  op=+
+[DEBUG]     typeInfer  expr=VarExpression  → int
+```
+
+**Call routing** — all 8 routing paths in the call compiler are announced so you can see exactly which dispatch path was taken:
+```
+[DEBUG]     compileCall  caller=greet  args=1
+[DEBUG]     → route: top-level static call  name=greet
+[DEBUG]     → INVOKEVIRTUAL  class=User  method=getName
+```
+
+**Function entry/exit** — every function compilation is bracketed:
+```
+[DEBUG] begin compileFunction  name=main  params=0  returnType=void  line=1
+[DEBUG] end compileFunction    name=main
+```
+
+**JVM line numbers** — `visitLineNumber` entries are emitted into the bytecode so that JVM stack traces point at the original Larv source line rather than `(Unknown Source)`.
+
+**Exception capture** — when any exception is thrown during compilation, it is caught and logged at the point of failure (statement type, line, exception class, message, full Java stack trace) before being re-thrown. Fatal exceptions that escape the entire pipeline are logged again at the top level.
+
+```bash
+java -jar larv.jar compile Main.larv --debug --run 2>debug.log
+```
+
+### How It Works
+
+The compiler pipeline:
+
+1. **Lexer** — tokenises the `.larv` source into a flat token stream
+2. **Parser** — builds an AST from the token stream
+3. **File import resolution** — recursively parses imported `.larv` files and merges their class/function declarations into the AST before compilation (circular imports are skipped automatically)
+4. **Compiler** — performs two passes over the AST:
+  - *First pass* — collects all top-level function, class, module, and import declarations
+  - *Second pass* — emits JVM bytecode via ASM
+5. **Output** — writes `.class` files; optionally executes immediately via a custom `ClassLoader`
+
+Each Larv class compiles to a JVM inner class (`Main$MyClass`). Top-level functions compile to private static methods on the main class. Stdlib calls are emitted as direct `invokestatic` instructions — no reflection, no `Object[]` allocation for calls with four or fewer arguments.
+
+The compiled runtime (`LarvRuntime`) includes several performance optimisations: a monomorphic inline cache on the `invokeMethod` fast path, a `MutableCallSite` per `(class, opcode)` pair for call-site caching, a `ThreadLocal` `StringBuilder` pool for `stringify` and `join` paths, and type-tag dispatch that avoids `instanceof` chains on the most common value types.
+
+---
+
+## Project Structure
+
+```
+src/main/java/com/habbashx/larv/
+├── lexer/
+│   ├── Lexer.java              Token stream producer
+│   ├── Token.java              Token record
+│   └── TokenType.java          All token categories
+├── parser/
+│   ├── StatementParser.java    Statement grammar rules
+│   ├── ExpressionParser.java   Expression grammar + precedence
+│   ├── ArgumentParser.java     Parameter / argument list parsing
+│   ├── Precedence.java         Operator precedence table
+│   └── ast/
+│       ├── statement/          One record per statement node
+│       └── expression/         One record per expression node
+├── runtime/
+│   ├── Interpreter.java        Entry point for interpreted mode
+│   ├── StatementExecutor.java  Executes each statement type
+│   ├── ExpressionEvaluator.java Evaluates each expression type
+│   ├── ExecutionContext.java    Scope, class registry, function registry
+│   ├── Environment.java        Variable / constant bindings
+│   ├── BinaryOperator.java     All binary operation logic
+│   ├── FunctionInvoker.java    Function call mechanics and sync support
+│   ├── LoopExecutor.java       Loop execution helpers
+│   ├── TruthinessEvaluator.java Truthiness rules
+│   ├── LarvObject.java         Runtime class instance
+│   ├── call/
+│   │   ├── LarvCallable.java   Callable interface
+│   │   ├── NativeFunction.java Stdlib function wrapper
+│   │   └── UserFunction.java   User-defined function wrapper
+│   ├── ffi/
+│   │   └── JavaClassRegistry.java  Java class binding and method dispatch
+│   ├── importer/
+│   │   └── LarvFileImporter.java   Multi-file import resolution
+│   ├── registry/
+│   │   └── NativeRegistry.java     Native function registry
+│   └── stdlib/                 Interpreter stdlib (Native* classes)
+├── compiler/
+│   ├── AbstractLarvCompiler.java   Shared state, debug helpers, utilities
+│   ├── TypeInferenceCompiler.java  Static type inference (no bytecode)
+│   ├── CallCompiler.java           Call routing and dispatch
+│   ├── ExpressionCompiler.java     Expression → bytecode
+│   ├── StatementCompiler.java      Statement → bytecode
+│   ├── ClassCompiler.java          Class / method compilation
+│   ├── LarvCompiler.java           Top-level compiler orchestration
+│   ├── LarvCompilerMain.java       CLI entry point for compiled mode
+│   ├── CompiledClass.java          Name + bytecode pair
+│   ├── classloader/
+│   │   └── LarvClassLoader.java    In-process class loader for --run
+│   ├── exception/
+│   │   └── CompileException.java   Compile-time error
+│   ├── runtime/
+│   │   ├── LarvRuntime.java        Compiled-mode runtime helpers
+│   │   ├── LarvMethods.java        Method ID constants
+│   │   ├── LarvObject.java         Compiled-mode object representation
+│   │   ├── LarvRuntimeException.java
+│   │   └── LarvTypeMismatchException.java
+│   ├── stdlib/
+│   │   ├── LarvStdlib.java         Interface all stdlib libs implement
+│   │   ├── LarvStdlibLoader.java   Auto-builds registry from all libs
+│   │   └── libs/                   One file per stdlib library
+│   └── util/
+│       ├── LarvCompilerUtils.java      Bytecode utility helpers
+│       ├── LarvCompilerTypeChecker.java Pre-compilation type checker
+│       └── LocalVarTable.java          Local variable slot management
+├── error/
+│   ├── LarvError.java          Runtime error with kind and line number
+│   └── ErrorReporter.java      Rich coloured diagnostics with source snippets
+└── signal/
+    ├── BreakSignal.java         break  control flow
+    ├── ContinueSignal.java      continue control flow
+    ├── ReturnSignal.java        return value carrier
+    └── ThrowSignal.java         throw value carrier
+```

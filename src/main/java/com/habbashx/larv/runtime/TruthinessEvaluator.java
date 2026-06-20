@@ -1,5 +1,7 @@
 package com.habbashx.larv.runtime;
 
+import org.jetbrains.annotations.Contract;
+
 /**
  * Decides whether a runtime value is considered truthy in Larv.
  *
@@ -19,8 +21,10 @@ package com.habbashx.larv.runtime;
  *
  * <p>This class is a utility class and cannot be instantiated.</p>
  */
+@Deprecated(since = "1.1.0") // unused by compiler
 public final class TruthinessEvaluator {
 
+    @Contract(pure = true)
     private TruthinessEvaluator() {}
 
     /**
@@ -29,6 +33,7 @@ public final class TruthinessEvaluator {
      * @param value the runtime value to test; {@code null} represents {@code nil}
      * @return {@code true} if the value is truthy
      */
+    @Contract(value = "null -> false", pure = true)
     public static boolean isTruthy(Object value) {
         if (value == null)          return false;
         if (value instanceof Boolean b) return b;

@@ -1,5 +1,6 @@
 package com.habbashx.larv.runtime;
 
+import com.habbashx.larv.error.LarvError;
 import com.habbashx.larv.runtime.call.LarvCallable;
 
 import java.util.HashMap;
@@ -29,6 +30,7 @@ public class LarvObject {
     /** Named field values, including the internal {@code "__methods__"} map. */
     private final Map<String, Object> fields = new HashMap<>();
 
+    @Deprecated(since = "1.1.0")
     /**
      * Named callable methods registered on this object.
      *
@@ -39,26 +41,48 @@ public class LarvObject {
     private final Map<String, LarvCallable> methods = new HashMap<>();
 
     /**
+     * Optional class name — populated by class/module/enum instantiation,
+     * {@code null} for anonymous objects created internally (e.g. module namespaces
+     * built by {@code visitModule} before a class name is known).
+     */
+    private final String className;
+
+    // ── Constructors ─────────────────────────────────────────────────────────
+
+    /**
+     * Creates an anonymous LarvObject with no class name.
+     * Used by the interpreter for module objects, enum objects, and other
+     * anonymous namespaces that do not correspond to a named Larv class.
+     */
+    public LarvObject() {
+        this.className = null;
+    }
+
+    /**
+     * Creates a named LarvObject for a user-defined Larv class instance.
+     *
+     * @param className the Larv class name (used in {@link #toString()})
+     */
+    public LarvObject(String className) {
+        this.className = className;
+    }
+
+    // ── Field access ─────────────────────────────────────────────────────────
+
+    /**
      * Returns the field or method bound to {@code name}.
      *
-     * <p>Fields take priority over methods.  If neither is found, a
-     * {@link RuntimeException} is thrown (use this only after verifying
-     * the field exists).</p>
+     * <p>Fields take priority over methods. Returns {@code null} when neither
+     * is found — callers that require presence should use {@link #getOrThrow}.</p>
      *
      * @param name the field or method name
-     * @return the stored value or callable
-     * @throws RuntimeException if no field or method with the given name exists
+     * @return the stored value / callable, or {@code null} if not found
      */
     public Object get(String name) {
-
-        if (fields.containsKey(name)) {
-            return fields.get(name);
-        }
-
+        if (fields.containsKey(name)) return fields.get(name);
         LarvCallable method = methods.get(name);
         if (method != null) return method;
-
-        throw new RuntimeException("Undefined field: " + name);
+        return null;
     }
 
     /**
@@ -72,12 +96,34 @@ public class LarvObject {
     }
 
     /**
-     * Registers a method on this object instance.
-     *
-     * @param name the method name
-     * @param fn   the callable implementation
+     * Returns a read-only view of all fields on this object.
+     * Used by the method invoker to inject fields into the method scope.
      */
-    public void defineMethod(String name, LarvCallable fn) {
-        methods.put(name, fn);
+    public Map<String, Object> getFields() {
+        return java.util.Collections.unmodifiableMap(fields);
+    }
+
+    public Object getOrThrow(String name) {
+        Object value = get(name);
+        if (value == null && !fields.containsKey(name))
+            throw new LarvError("Undefined field '" + name + "' on object");
+        return value;
+    }
+
+    public boolean hasField(String name) {
+        return fields.containsKey(name);
+    }
+
+    // ── Meta ──────────────────────────────────────────────────────────────────
+
+    /** Returns the class name, or {@code null} for anonymous objects. */
+    public String getClassName() {
+        return className;
+    }
+
+    @Override
+    public String toString() {
+        if (className != null) return "<" + className + " " + fields + ">";
+        return "<object " + fields + ">";
     }
 }

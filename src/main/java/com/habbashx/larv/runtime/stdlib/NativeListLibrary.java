@@ -39,38 +39,38 @@ import java.util.List;
  */
 @SuppressWarnings("unchecked")
 @Native("List Library")
-public class NativeListLibrary implements NativeLibrary {
+@Deprecated(since = "1.1.0") // unused by compiler & interpreter
+public class NativeListLibrary extends NativeLibrary {
 
-    private final ExecutionContext context;
 
     public NativeListLibrary(ExecutionContext context) {
-        this.context = context;
+        super(context);
     }
 
     @Override
     public void registerAll() {
-        context.registerNative("listNew",      this::listNew);
-        context.registerNative("listAdd",      this::listAdd);
-        context.registerNative("listAddAt",    this::listAddAt);
-        context.registerNative("listRemove",   this::listRemove);
-        context.registerNative("listGet",      this::listGet);
-        context.registerNative("listSet",      this::listSet);
-        context.registerNative("listSize",     this::listSize);
-        context.registerNative("listContains", this::listContains);
-        context.registerNative("listIndexOf",  this::listIndexOf);
-        context.registerNative("listSlice",    this::listSlice);
-        context.registerNative("listReverse",  this::listReverse);
-        context.registerNative("listSort",     this::listSort);
-        context.registerNative("listConcat",   this::listConcat);
-        context.registerNative("listFlat",     this::listFlat);
-        context.registerNative("listUnique",   this::listUnique);
-        context.registerNative("listFill",     this::listFill);
-        context.registerNative("listClear",    this::listClear);
-        context.registerNative("listIsEmpty",  this::listIsEmpty);
-        context.registerNative("listFirst",    this::listFirst);
-        context.registerNative("listLast",     this::listLast);
-        context.registerNative("listPop",      this::listPop);
-        context.registerNative("listShuffle",  this::listShuffle);
+       getExecutionContext().registerNative("listNew",      this::listNew);
+       getExecutionContext().registerNative("listAdd",      this::listAdd);
+       getExecutionContext().registerNative("listAddAt",    this::listAddAt);
+       getExecutionContext().registerNative("listRemove",   this::listRemove);
+       getExecutionContext().registerNative("listGet",      this::listGet);
+       getExecutionContext().registerNative("listSet",      this::listSet);
+       getExecutionContext().registerNative("listSize",     this::listSize);
+       getExecutionContext().registerNative("listContains", this::listContains);
+       getExecutionContext().registerNative("listIndexOf",  this::listIndexOf);
+       getExecutionContext().registerNative("listSlice",    this::listSlice);
+       getExecutionContext().registerNative("listReverse",  this::listReverse);
+       getExecutionContext().registerNative("listSort",     this::listSort);
+       getExecutionContext().registerNative("listConcat",   this::listConcat);
+       getExecutionContext().registerNative("listFlat",     this::listFlat);
+       getExecutionContext().registerNative("listUnique",   this::listUnique);
+       getExecutionContext().registerNative("listFill",     this::listFill);
+       getExecutionContext().registerNative("listClear",    this::listClear);
+       getExecutionContext().registerNative("listIsEmpty",  this::listIsEmpty);
+       getExecutionContext().registerNative("listFirst",    this::listFirst);
+       getExecutionContext().registerNative("listLast",     this::listLast);
+       getExecutionContext().registerNative("listPop",      this::listPop);
+       getExecutionContext().registerNative("listShuffle",  this::listShuffle);
     }
 
     private List<Object> listArg(@NotNull List<Object> args, int i, String fn) {

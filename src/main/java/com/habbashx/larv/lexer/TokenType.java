@@ -2,7 +2,8 @@ package com.habbashx.larv.lexer;
 
 /**
  * Exhaustive set of syntactic categories recognised by the Larv {@link Lexer}.
- * (Additions: TRY, CATCH, FINALLY, THROW, SWITCH, CASE, DEFAULT, ENUM, RAW_STRING)
+ * (Additions: TRY, CATCH, FINALLY, THROW, SWITCH, CASE, DEFAULT, ENUM, RAW_STRING,
+ *             SYNC, CORE, OVERRIDE)
  */
 public enum TokenType {
 
@@ -47,6 +48,15 @@ public enum TokenType {
     DEFAULT,
 
     ENUM,
+    ATOMIC,
+    VOLATILE,
+
+    SYNC,
+    CORE,
+    OVERRIDE,
+
+    GET,
+    SET,
 
     PLUS,
     MINUS,
@@ -82,5 +92,7 @@ public enum TokenType {
     OR,
     BANG,
     QUESTION,
+    DEFER,
+    ARROW,
     EOF
 }

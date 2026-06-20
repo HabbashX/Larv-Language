@@ -149,9 +149,7 @@ public class JavaClassRegistry {
         } catch (LarvError e) {
             throw e;
         } catch (Throwable t) {
-            throw new LarvError(
-                    "Error calling " + alias + "." + methodName + "(): " + t.getMessage(),
-                    -1, LarvError.Kind.FFI);
+            throw buildInvocationError(alias, methodName, t);
         }
     }
 
@@ -221,7 +219,7 @@ public class JavaClassRegistry {
     }
 
     /**
-     * Constructs an object from a spec like {@code java.io.FileWriter("example.txt")}.
+     * Constructs an object from a spec like {@code java.io.FileWriter("example.properties")}.
      * Nested constructor specs are not supported; only string and numeric literals.
      */
     private Object constructFromSpec(String fqcn, String argsRaw) {
@@ -299,12 +297,38 @@ public class JavaClassRegistry {
             if (score > bestScore) { bestScore = score; best = ctor; }
         }
 
-        if (best == null) throw new LarvError(
-                "No constructor for '" + clazz.getSimpleName() + "' matching " +
-                        args.size() + " argument(s)", -1, LarvError.Kind.FFI);
+        if (best == null) {
+            // Build a helpful error listing available constructors
+            StringBuilder ctors = new StringBuilder();
+            ctors.append("\n  available constructors for ").append(clazz.getSimpleName()).append(":");
+            for (Constructor<?> ctor : clazz.getConstructors()) {
+                StringBuilder sig = new StringBuilder(clazz.getSimpleName()).append("(");
+                Class<?>[] p = ctor.getParameterTypes();
+                for (int i = 0; i < p.length; i++) { if (i > 0) sig.append(", "); sig.append(p[i].getSimpleName()); }
+                sig.append(")");
+                ctors.append("\n    ").append(sig);
+            }
+            String argWord = args.size() == 1 ? "argument" : "arguments";
+            throw new LarvError(
+                    "no constructor for '" + clazz.getSimpleName() + "' takes " + args.size() + " " + argWord,
+                    -1, LarvError.Kind.FFI)
+                    .withHint(ctors.toString().substring(1));
+        }
 
         Object[] converted = convertArgs(best.getParameterTypes(), rawArgs);
-        return best.newInstance(converted);
+        try {
+            return best.newInstance(converted);
+        } catch (java.lang.reflect.InvocationTargetException ite) {
+            Throwable cause = ite.getCause() != null ? ite.getCause() : ite;
+            throw new LarvError(
+                    "constructor '" + clazz.getSimpleName() + "' threw an exception: " + describeThrowable(cause),
+                    -1, LarvError.Kind.FFI)
+                    .withNote("this exception was thrown by Java, not Larv — check the constructor arguments");
+        } catch (Exception ex) {
+            throw new LarvError(
+                    "failed to construct '" + clazz.getSimpleName() + "': " + describeThrowable(ex),
+                    -1, LarvError.Kind.FFI);
+        }
     }
 
     private @NotNull Method findBestMatch(@NotNull Class<?> clazz, String name, Object[] args, boolean hasInstance) {
@@ -323,12 +347,125 @@ public class JavaClassRegistry {
             if (methodScore > bestScore) { bestScore = methodScore; best = m; }
         }
 
-        if (best == null) throw new LarvError(
-                "No method '" + name + "' with " + args.length +
-                        " argument(s) found in " + clazz.getSimpleName(),
-                -1, LarvError.Kind.FFI);
+        if (best == null) {
+            throw buildMethodNotFoundError(clazz, name, args.length);
+        }
 
         return best;
+    }
+
+    /**
+     * Builds a rich FFI error when a method cannot be found.
+     *
+     * <p>The error includes:</p>
+     * <ul>
+     *   <li>The method name that was not found and the argument count tried</li>
+     *   <li>The closest spelling match found via Levenshtein distance (the "did you mean?" hint)</li>
+     *   <li>A list of all public methods on the class with the same argument count,
+     *       or all public methods if none match the arity</li>
+     * </ul>
+     *
+     * <p>Example output:</p>
+     * <pre>
+     *   ffi error[E004]: method 'readLi' not found on java.io.BufferedReader (0 argument(s))
+     *    -->
+     *     = help: did you mean 'readLine'?
+     *
+     *   methods with 0 argument(s) on BufferedReader:
+     *     readLine()           — returns String
+     *     read()               — returns int
+     *     ready()              — returns boolean
+     *     close()              — returns void
+     *     reset()              — returns void
+     *     mark(int)            — returns void
+     *     markSupported()      — returns boolean
+     *     ...
+     * </pre>
+     */
+    private @NotNull LarvError buildMethodNotFoundError(@NotNull Class<?> clazz, String name, int arity) {
+        // ── Collect all public methods ────────────────────────────────────
+        Method[] all = clazz.getMethods();
+
+        // ── Find closest name by Levenshtein distance ─────────────────────
+        String suggestion = null;
+        int    bestDist   = Integer.MAX_VALUE;
+        for (Method m : all) {
+            int d = levenshtein(name, m.getName());
+            if (d < bestDist) { bestDist = d; suggestion = m.getName(); }
+        }
+        // Only suggest if reasonably close (≤ 3 edits, or ≤ half the name length)
+        boolean hasSuggestion = suggestion != null && bestDist <= Math.max(3, name.length() / 2);
+
+        // ── Build method list (same arity first, then all if none match) ──
+        List<Method> sameArity = new ArrayList<>();
+        for (Method m : all) {
+            if (m.getParameterTypes().length == arity) sameArity.add(m);
+        }
+        List<Method> candidates = sameArity.isEmpty() ? java.util.Arrays.asList(all) : sameArity;
+
+        // ── Format the available-methods table ────────────────────────────
+        StringBuilder available = new StringBuilder();
+        String arityLabel = sameArity.isEmpty()
+                ? "\n  all public methods on " + clazz.getSimpleName() + ":"
+                : "\n  methods with " + arity + " argument(s) on " + clazz.getSimpleName() + ":";
+        available.append(arityLabel);
+
+        // Deduplicate by name+arity, then sort alphabetically
+        java.util.Map<String, Method> seen = new java.util.LinkedHashMap<>();
+        for (Method m : candidates) {
+            String key = m.getName() + "/" + m.getParameterCount();
+            seen.putIfAbsent(key, m);
+        }
+        seen.values().stream()
+                .sorted(java.util.Comparator.comparing(Method::getName))
+                .limit(12)
+                .forEach(m -> {
+                    // Parameter types (simplified — strip package name)
+                    StringBuilder sig = new StringBuilder(m.getName()).append("(");
+                    Class<?>[] params = m.getParameterTypes();
+                    for (int i = 0; i < params.length; i++) {
+                        if (i > 0) sig.append(", ");
+                        sig.append(params[i].getSimpleName());
+                    }
+                    sig.append(")");
+                    String ret = m.getReturnType().getSimpleName();
+                    available.append("\n    ").append(String.format("%-30s", sig)).append(" — returns ").append(ret);
+                });
+
+        if (seen.size() > 12) {
+            available.append("\n    ... and ").append(seen.size() - 12).append(" more");
+        }
+
+        // ── Assemble the error ────────────────────────────────────────────
+        String hint = hasSuggestion
+                ? "did you mean '" + suggestion + "'?" + available
+                : available.toString().substring(1); // trim leading \n
+
+        String argWord = arity == 1 ? "argument" : "arguments";
+        LarvError err = new LarvError(
+                "method '" + name + "' not found on " + clazz.getName() + " (" + arity + " " + argWord + ")",
+                -1, LarvError.Kind.FFI);
+        err.withHint(hint);
+        return err;
+    }
+
+    /**
+     * Computes the Levenshtein edit distance between two strings.
+     * Used to find the closest matching method name for "did you mean?" suggestions.
+     */
+    private static int levenshtein(@NotNull String a, @NotNull String b) {
+        int m = a.length(), n = b.length();
+        int[][] dp = new int[m + 1][n + 1];
+        for (int i = 0; i <= m; i++) dp[i][0] = i;
+        for (int j = 0; j <= n; j++) dp[0][j] = j;
+        for (int i = 1; i <= m; i++) {
+            for (int j = 1; j <= n; j++) {
+                dp[i][j] = a.charAt(i - 1) == b.charAt(j - 1)
+                        ? dp[i - 1][j - 1]
+                        : 1 + Math.min(dp[i - 1][j - 1], Math.min(dp[i - 1][j], dp[i][j - 1]));
+            }
+        }
+        return dp[m][n];
     }
 
     private MethodHandle toHandle(@NotNull Method method) throws Exception {
@@ -412,4 +549,75 @@ public class JavaClassRegistry {
                 "Cannot convert " + value.getClass().getSimpleName() + " to " + target.getSimpleName(),
                 -1, LarvError.Kind.FFI);
     }
+    // ── Invocation error helpers ──────────────────────────────────────────────
+
+    /**
+     * Unwraps {@link java.lang.reflect.InvocationTargetException} — the reflective
+     * wrapper that Java throws when the invoked method itself threw — and builds a
+     * {@link LarvError} that shows the *real* cause instead of the useless wrapper.
+     *
+     * <p>Example: calling {@code sc.readLine()} on a closed reader throws
+     * {@code InvocationTargetException} wrapping {@code IOException("Stream closed")}.
+     * This method surfaces that as:</p>
+     * <pre>
+     *   ffi error[E004]: sc.readLine() threw java.io.IOException: Stream closed
+     *    = note: the exception originated inside Java, not in your Larv code
+     * </pre>
+     */
+    private @NotNull LarvError buildInvocationError(String alias, String methodName, @NotNull Throwable t) {
+        // Unwrap InvocationTargetException (and UndeclaredThrowableException) recursively
+        Throwable cause = t;
+        while ((cause instanceof java.lang.reflect.InvocationTargetException ||
+                cause instanceof java.lang.reflect.UndeclaredThrowableException)
+                && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+
+        String javaType = cause.getClass().getName();
+        String msg      = cause.getMessage();
+
+        String header = "'" + alias + "." + methodName + "()' threw " + javaType +
+                (msg != null && !msg.isBlank() ? ": " + msg : "");
+
+        LarvError err = new LarvError(header, -1, LarvError.Kind.FFI);
+
+        // Attach a context-aware hint for common Java exceptions
+        String hint = switch (cause.getClass().getSimpleName()) {
+            case "FileNotFoundException"    -> "check that the file path is correct and the file exists";
+            case "IOException"              -> "an I/O error occurred — the stream may be closed or the file unreadable";
+            case "NullPointerException"     -> "a null value was passed to a Java method that does not accept null";
+            case "IllegalArgumentException" -> "one of the arguments passed to '" + methodName + "' was invalid — check types and ranges";
+            case "IllegalStateException"    -> "'" + methodName + "' was called at the wrong time — the object may not be initialised yet";
+            case "NumberFormatException"    -> "a string could not be parsed as a number — check the input value";
+            case "ArrayIndexOutOfBoundsException",
+                 "IndexOutOfBoundsException",
+                 "StringIndexOutOfBoundsException"
+                    -> "an index was out of range inside the Java method";
+            case "ClassCastException"       -> "Java could not cast between types — check that you are passing the right argument types";
+            case "UnsupportedOperationException"
+                    -> "'" + methodName + "' is not supported by this implementation";
+            case "SocketException",
+                 "ConnectException"         -> "a network error occurred — check your connection and remote host";
+            case "SQLException"             -> "a database error occurred — check your query and connection";
+            default                         -> null;
+        };
+
+        if (hint != null) err.withHint(hint);
+
+        err.withNote("this exception was thrown inside Java — the call site in your Larv code is the line above");
+
+        return err;
+    }
+
+    /**
+     * Returns a short human-readable description of a throwable for use in error
+     * messages: {@code "ClassName: message"} or just {@code "ClassName"} if there
+     * is no message.
+     */
+    private static @NotNull String describeThrowable(@NotNull Throwable t) {
+        String name = t.getClass().getSimpleName();
+        String msg  = t.getMessage();
+        return (msg != null && !msg.isBlank()) ? name + ": " + msg : name;
+    }
+
 }

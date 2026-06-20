@@ -6,6 +6,7 @@ import com.habbashx.larv.lexer.Token;
 import com.habbashx.larv.parser.Parser;
 import com.habbashx.larv.parser.ast.statement.*;
 import com.habbashx.larv.runtime.ExecutionContext;
+import com.habbashx.larv.runtime.stdlib.loader.NativeLibraryLoader;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
@@ -53,7 +54,6 @@ public class LarvFileImporter {
         Path filePath = resolve(dottedPath);
         String canonical = filePath.toAbsolutePath().normalize().toString();
 
-        // Circular / duplicate import guard
         if (IMPORTED.contains(canonical)) return;
         IMPORTED.add(canonical);
 
@@ -79,15 +79,13 @@ public class LarvFileImporter {
             } else if (stmt instanceof FunctionStatement fn) {
                 context.defineFunction(fn.name(), fn);
             } else if (stmt instanceof ImportStatement nested) {
-                // Allow imported files to have their own imports
-                if (nested.isFileImport()) {
-                    // Resolve nested import relative to the imported file's directory
-                    Path nestedRoot = filePath.getParent() != null ? filePath.getParent() : root;
-                    new LarvFileImporter(context, nestedRoot).importFile(nested.path());
-                }
-                // stdlib imports inside a .larv file are intentionally ignored here
-                // — the user should import stdlib in their own file
+            if (nested.isFileImport()) {
+                Path nestedRoot = filePath.getParent() != null ? filePath.getParent() : root;
+                new LarvFileImporter(context, nestedRoot).importFile(nested.path());
+            } else {
+                new NativeLibraryLoader(context).load(nested.library());
             }
+        }
         }
     }
 
@@ -95,7 +93,6 @@ public class LarvFileImporter {
      * Convert "com.habbashx.Testing" → root/com/habbashx/Testing.larv
      */
     private @NotNull Path resolve(@NotNull String dottedPath) {
-        // Replace dots with path separator, append .larv
         String relativePath = dottedPath.replace('.', '/') + ".larv";
         Path resolved = root.resolve(relativePath).normalize();
 

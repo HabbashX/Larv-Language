@@ -10,24 +10,24 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Properties;
 
-@Native("Properties Library")
-public class NativePropertiesLibrary implements NativeLibrary {
+@Native("Native Properties Library")
+@Deprecated(since = "1.1.0") // unused by compiler & interpreter
+public class NativePropertiesLibrary extends NativeLibrary {
 
     private final Properties properties = new Properties();
 
-    private final ExecutionContext executionContext;
 
     public NativePropertiesLibrary(ExecutionContext executionContext) {
-        this.executionContext = executionContext;
+        super(executionContext);
     }
 
     @Override
     public void registerAll() {
-        executionContext.registerNative("loadProp",    this::loadProperties);
-        executionContext.registerNative("getProp",     this::getProperty);
-        executionContext.registerNative("setProp",this::setProperty);
-        executionContext.registerNative("saveProp",this::saveProperties);
-        executionContext.registerNative("getAllProps",  this::getAllProperties);
+       getExecutionContext().registerNative("loadProp",    this::loadProperties);
+       getExecutionContext().registerNative("getProp",     this::getProperty);
+       getExecutionContext().registerNative("setProp",this::setProperty);
+       getExecutionContext().registerNative("saveProp",this::saveProperties);
+       getExecutionContext().registerNative("getAllProps",  this::getAllProperties);
     }
 
     private @NotNull String args(@NotNull List<Object> args, int index, String fnName) {

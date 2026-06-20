@@ -46,7 +46,7 @@ public final class ArgumentParser {
      * Parses a parenthesised, comma-separated list of parameter names.
      * The opening {@code (} must already have been consumed.
      */
-    public List<String> parseParameters() {
+    public @NotNull List<String> parseParameters() {
         List<String> params = new ArrayList<>();
         if (!stream.check(TokenType.RPAREN)) {
             do {

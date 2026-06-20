@@ -26,32 +26,27 @@ import java.util.regex.PatternSyntaxException;
  *   regexGroups(str, pattern)          → array    all capture groups of first match
  */
 @Native("Regular Expression Library [RegEx]")
-public class NativeRegexLibrary implements NativeLibrary {
+@Deprecated(since = "1.1.0") // unused by compiler & interpreter
+public class NativeRegexLibrary extends NativeLibrary {
 
-    private final ExecutionContext context;
 
     public NativeRegexLibrary(ExecutionContext context) {
-        this.context = context;
+        super(context);
     }
 
     @Override
     public void registerAll() {
-        context.registerNative("regexMatch",      this::regexMatch);
-        context.registerNative("regexTest",       this::regexTest);
-        context.registerNative("regexFind",       this::regexFind);
-        context.registerNative("regexFindAll",    this::regexFindAll);
-        context.registerNative("regexReplace",    this::regexReplace);
-        context.registerNative("regexReplaceAll", this::regexReplaceAll);
-        context.registerNative("regexSplit",      this::regexSplit);
-        context.registerNative("regexGroup",      this::regexGroup);
-        context.registerNative("regexGroups",     this::regexGroups);
+        getExecutionContext().registerNative("regexMatch",      this::regexMatch);
+        getExecutionContext().registerNative("regexTest",       this::regexTest);
+        getExecutionContext().registerNative("regexFind",       this::regexFind);
+        getExecutionContext().registerNative("regexFindAll",    this::regexFindAll);
+        getExecutionContext().registerNative("regexReplace",    this::regexReplace);
+        getExecutionContext().registerNative("regexReplaceAll", this::regexReplaceAll);
+        getExecutionContext().registerNative("regexSplit",      this::regexSplit);
+        getExecutionContext().registerNative("regexGroup",      this::regexGroup);
+        getExecutionContext().registerNative("regexGroups",     this::regexGroups);
     }
 
-    private String strArg(@NotNull List<Object> args, int i, String fn) {
-        if (args.size() <= i || !(args.get(i) instanceof String s))
-            throw new LarvError(fn + "(): argument " + (i + 1) + " must be a string", -1, LarvError.Kind.RUNTIME);
-        return s;
-    }
 
     private @NotNull Pattern compile(String pattern, String fn) {
         try {

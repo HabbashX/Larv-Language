@@ -29,6 +29,7 @@ import java.util.function.Supplier;
  *   http    — httpGet, httpPost, httpPostJson, httpPut, httpDelete, httpRequest
  *   system  — exit, getEnv, clock, sleep, exec, osName, ...
  */
+@Deprecated(since = "1.1.0") // unused by compiler & interpreter
 public class NativeLibraryLoader {
 
     private static final Set<String> KNOWN = Set.of(
@@ -64,6 +65,8 @@ public class NativeLibraryLoader {
         registry.put("regex",() -> new NativeRegexLibrary(context));
         registry.put("converter",() -> new NativeConvertLibrary(context));
         registry.put("properties",() -> new NativePropertiesLibrary(context));
+        registry.put("jdbc",() -> new NativeJdbcLibrary(context));
+        registry.put("json",() -> new NativeJsonLibrary(context));
     }
 
     /**

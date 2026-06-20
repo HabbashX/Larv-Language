@@ -3,6 +3,8 @@ package com.habbashx.larv.runtime;
 import com.habbashx.larv.error.LarvError;
 import com.habbashx.larv.parser.ast.expression.*;
 import com.habbashx.larv.parser.ast.expression.visitor.ExpressionVisitor;
+import com.habbashx.larv.parser.ast.statement.ClassStatement;
+import com.habbashx.larv.parser.ast.statement.ConstStatement;
 import com.habbashx.larv.parser.ast.statement.FunctionStatement;
 import com.habbashx.larv.parser.ast.statement.Statement;
 import org.jetbrains.annotations.NotNull;
@@ -46,7 +48,7 @@ import java.util.Map;
  *   <li>{@link ArrayMethods}    — dispatches built-in array dot methods.</li>
  * </ul>
  */
-public class ExpressionEvaluator implements ExpressionVisitor {
+public final class ExpressionEvaluator implements ExpressionVisitor {
 
     private final ExecutionContext context;
     private final FunctionInvoker  invoker;
@@ -218,26 +220,36 @@ public class ExpressionEvaluator implements ExpressionVisitor {
         var clazz = context.getClass(className);
         if (clazz == null) throw new LarvError("Undefined class '" + className + "'");
 
-        LarvObject obj     = new LarvObject();
-        Map<String, FunctionStatement> methods = collectMethods(clazz.body());
+        LarvObject obj = new LarvObject();
+        // Collect methods, walking the inheritance chain (parent first, child overrides)
+        Map<String, FunctionStatement> methods = collectInheritedMethods(clazz);
         obj.set("__methods__", methods);
+        obj.set("__class__", className);
 
-        Environment saved = context.getEnvironment();
-        context.pushScope();
-        try {
-            context.getEnvironment().define("this", obj);
-            FunctionStatement init = methods.get("init");
-            if (init != null) invoker.invokeMethod(init, obj, evalAll(e.args()));
-            return obj;
-        } finally {
-            context.popScope(saved);
+        for (Statement s : clazz.body()) {
+            if (s instanceof ConstStatement cs) {
+                obj.set(cs.name(), eval(cs.value()));
+            }
         }
+
+        FunctionStatement init = methods.get("init");
+        if (init != null) invoker.invokeMethod(init, obj, evalAll(e.args()));
+
+        return obj;
     }
 
     @Override public Object visitThis(ThisExpression e)            { return context.getEnvironment().get("this"); }
-    @Override public Object visitGet(@NotNull GetExpression e)     { return requireObject(eval(e.object()), "field access '" + e.field() + "'").get(e.field()); }
-    @Override public Object visitSet(@NotNull SetExpression e)     { requireObject(eval(e.object()), "field assignment '" + e.field() + "'").set(e.field(), eval(e.value())); return null; }
 
+    @Override
+    public Object visitGet(@NotNull GetExpression e) {
+        return requireObject(eval(e.object()), "field access '" + e.field() + "'").getOrThrow(e.field());
+    }
+
+    @Override
+    public Object visitSet(@NotNull SetExpression e) {
+        requireObject(eval(e.object()), "field assignment '" + e.field() + "'").set(e.field(), eval(e.value()));
+        return null;
+    }
     /**
      * Resolves and calls a named function.
      * Checks native registry first, then user-defined functions.
@@ -279,7 +291,7 @@ public class ExpressionEvaluator implements ExpressionVisitor {
 
         Object target = eval(objExpr);
 
-        if (target instanceof LarvObject obj && obj.get("__module__") != null) {
+        if (target instanceof LarvObject obj && obj.hasField("__module__")) {
             String moduleName = (String) obj.get("__module__");
             String qualifiedName = moduleName + "." + methodName;
             if (context.hasNative(qualifiedName)) return context.invokeNative(qualifiedName, args);
@@ -324,6 +336,63 @@ public class ExpressionEvaluator implements ExpressionVisitor {
     private @NotNull Map<String, FunctionStatement> collectMethods(@NotNull List<Statement> body) {
         Map<String, FunctionStatement> methods = new HashMap<>();
         for (Statement s : body) if (s instanceof FunctionStatement fn) methods.put(fn.name(), fn);
+        return methods;
+    }
+
+    /**
+     * Builds the full method table for a class, walking the inheritance chain.
+     *
+     * <p>Algorithm:
+     * <ol>
+     *   <li>Recursively collect parent methods first.</li>
+     *   <li>Apply child methods on top, respecting {@code core} and {@code override} rules:
+     *     <ul>
+     *       <li>A parent method marked {@code core} cannot be overridden — attempting to
+     *           do so throws a {@link LarvError}.</li>
+     *       <li>Overriding a non-core parent method requires the {@code override} keyword.</li>
+     *       <li>Using {@code override} when no parent method exists is an error.</li>
+     *     </ul>
+     *   </li>
+     * </ol>
+     *
+     * @param clazz the class whose full method table should be built
+     * @return the merged method map
+     */
+    private @NotNull Map<String, FunctionStatement> collectInheritedMethods(@NotNull ClassStatement clazz) {
+        Map<String, FunctionStatement> methods = new HashMap<>();
+
+        if (clazz.superclassName() != null) {
+            ClassStatement parent = context.getClass(clazz.superclassName());
+            if (parent == null)
+                throw new LarvError("Undefined superclass '" + clazz.superclassName() + "' for class '" + clazz.name() + "'");
+            methods.putAll(collectInheritedMethods(parent));
+        }
+
+        for (Statement s : clazz.body()) {
+            if (!(s instanceof FunctionStatement fn)) continue;
+
+            FunctionStatement existing = methods.get(fn.name());
+
+            if (existing != null) {
+                if (existing.isCore()) {
+                    throw new LarvError(
+                            "Cannot override core method '" + fn.name() + "' inherited from superclass — " +
+                                    "'core' methods are sealed and cannot be redefined in subclasses", fn.line());
+                }
+                if (!fn.isOverride()) {
+                    throw new LarvError(
+                            "Method '" + fn.name() + "' overrides a parent method but is missing the 'override' keyword", fn.line());
+                }
+            } else {
+                if (fn.isOverride()) {
+                    throw new LarvError(
+                            "'override' on method '" + fn.name() + "' but no parent method with that name exists", fn.line());
+                }
+            }
+
+            methods.put(fn.name(), fn);
+        }
+
         return methods;
     }
 

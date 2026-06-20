@@ -27,29 +27,28 @@ import java.util.List;
  *   typeOf(val)        → string   runtime type name of a value
  */
 @Native("Converter Library")
-public class NativeConvertLibrary implements NativeLibrary {
-
-    private final ExecutionContext context;
+@Deprecated(since = "1.1.0") // unused by compiler & interpreter
+public class NativeConvertLibrary extends NativeLibrary{
 
     public NativeConvertLibrary(ExecutionContext context) {
-        this.context = context;
+        super(context);
     }
 
     @Override
     public void registerAll() {
-        context.registerNative("toNumber",   this::toNumber);
-        context.registerNative("toString",   this::toStr);
-        context.registerNative("toBool",     this::toBool);
-        context.registerNative("toInt",      this::toInt);
-        context.registerNative("toHex",      this::toHex);
-        context.registerNative("toOctal",    this::toOctal);
-        context.registerNative("toBinary",   this::toBinary);
-        context.registerNative("fromHex",    this::fromHex);
-        context.registerNative("fromOctal",  this::fromOctal);
-        context.registerNative("fromBinary", this::fromBinary);
-        context.registerNative("toBytes",    this::toBytes);
-        context.registerNative("fromBytes",  this::fromBytes);
-        context.registerNative("typeOf",     this::typeOf);
+       getExecutionContext().registerNative("toNumber",   this::toNumber);
+       getExecutionContext().registerNative("toString",   this::toStr);
+       getExecutionContext().registerNative("toBool",     this::toBool);
+       getExecutionContext().registerNative("toInt",      this::toInt);
+       getExecutionContext().registerNative("toHex",      this::toHex);
+       getExecutionContext().registerNative("toOctal",    this::toOctal);
+       getExecutionContext().registerNative("toBinary",   this::toBinary);
+       getExecutionContext().registerNative("fromHex",    this::fromHex);
+       getExecutionContext().registerNative("fromOctal",  this::fromOctal);
+       getExecutionContext().registerNative("fromBinary", this::fromBinary);
+       getExecutionContext().registerNative("toBytes",    this::toBytes);
+       getExecutionContext().registerNative("fromBytes",  this::fromBytes);
+       getExecutionContext().registerNative("typeOf",     this::typeOf);
     }
 
     private Object requireArg(@NotNull List<Object> args, String fn) {

@@ -1,6 +1,7 @@
 package com.habbashx.larv.runtime;
 
 import com.habbashx.larv.error.LarvError;
+import com.habbashx.larv.parser.ast.expression.Expression;
 import com.habbashx.larv.parser.ast.statement.*;
 import com.habbashx.larv.parser.ast.statement.visitor.StatementVisitor;
 import com.habbashx.larv.runtime.importer.LarvFileImporter;
@@ -11,20 +12,17 @@ import com.habbashx.larv.signal.ReturnSignal;
 import com.habbashx.larv.signal.ThrowSignal;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * Executes every {@link Statement} node.
  *
  * <h2>New handlers</h2>
  * <ul>
- *   <li>{@link #visitTryCatch}  — try / catch / finally</li>
- *   <li>{@link #visitThrow}     — throw expr</li>
- *   <li>{@link #visitSwitch}    — switch / case / default</li>
- *   <li>{@link #visitEnum}      — enum Name { A, B, C }</li>
+ *   <li>{@link #visitTryCatch}  &mdash; try / catch / finally</li>
+ *   <li>{@link #visitThrow}     &mdash; throw expr</li>
+ *   <li>{@link #visitSwitch}    &mdash; switch / case / default</li>
+ *   <li>{@link #visitEnum}      &mdash; enum Name { A, B, C }</li>
  * </ul>
  */
 public class StatementExecutor implements StatementVisitor {
@@ -34,6 +32,9 @@ public class StatementExecutor implements StatementVisitor {
     private final LoopExecutor         loopExecutor;
 
     private final Map<Class<?>, StatementHandler<Statement>> registry;
+
+    /** Per-scope stack of deferred expressions, innermost scope at top. */
+    private final Deque<Deque<com.habbashx.larv.parser.ast.expression.Expression>> deferStack = new ArrayDeque<>();
 
     public StatementExecutor(ExecutionContext context, ExpressionEvaluator evaluator) {
         this.context      = context;
@@ -45,7 +46,7 @@ public class StatementExecutor implements StatementVisitor {
     private @NotNull Map<Class<?>, StatementHandler<Statement>> buildRegistry() {
         Map<Class<?>, StatementHandler<Statement>> map = new HashMap<>();
 
-        map.put(LetStatement.class,              s -> visitLet((LetStatement) s));
+        map.put(VarStatement.class, s -> visitVar((VarStatement) s));
         map.put(ConstStatement.class,            s -> visitConst((ConstStatement) s));
         map.put(AssignStatement.class,           s -> visitAssign((AssignStatement) s));
         map.put(CompoundAssignStatement.class,   s -> visitCompoundAssign((CompoundAssignStatement) s));
@@ -65,11 +66,12 @@ public class StatementExecutor implements StatementVisitor {
         map.put(ClassStatement.class,            s -> visitClass((ClassStatement) s));
         map.put(JavaBindStatement.class,         s -> visitJavaBind((JavaBindStatement) s));
         map.put(ImportStatement.class,           s -> visitImport((ImportStatement) s));
-        // ── new ───────────────────────────────────────────────────────────────
         map.put(TryCatchStatement.class,         s -> visitTryCatch((TryCatchStatement) s));
         map.put(ThrowStatement.class,            s -> visitThrow((ThrowStatement) s));
         map.put(SwitchStatement.class,           s -> visitSwitch((SwitchStatement) s));
         map.put(EnumStatement.class,             s -> visitEnum((EnumStatement) s));
+        map.put(DeferStatement.class,            s -> visitDefer((DeferStatement) s));
+        map.put(AtomicStatement.class, s -> visitAtomic((AtomicStatement) s));
 
         return map;
     }
@@ -93,9 +95,8 @@ public class StatementExecutor implements StatementVisitor {
         }
     }
 
-    // ── Existing visitors (unchanged) ─────────────────────────────────────────
 
-    @Override public void visitLet(@NotNull LetStatement st) {
+    @Override public void visitVar(@NotNull VarStatement st) {
         Object value = st.expression() == null ? null : evaluator.eval(st.expression());
         context.getEnvironment().define(st.name(), value);
     }
@@ -116,19 +117,53 @@ public class StatementExecutor implements StatementVisitor {
     }
 
     /**
-     * Executes a {@code for … in} loop over a Larv list.
+     * Executes a {@code for … in} loop over a Larv list or map.
      *
-     * <p>Each element is bound to {@link ForeachStatement#variable()} in a fresh
-     * inner scope.  {@link ContinueSignal} skips to the next element;
+     * <p><b>List iteration</b> — one variable: each element is bound to
+     * {@link ForeachStatement#variable()} in a fresh inner scope.</p>
+     *
+     * <p><b>Map iteration</b> — two variables ({@code for key, value in map}):
+     * the entry key (String) is bound to {@link ForeachStatement#variable()} and
+     * the entry value is bound to {@link ForeachStatement#valueVariable()} in each
+     * iteration scope. Using a single variable on a map iterates over its keys.</p>
+     *
+     * <p>{@link ContinueSignal} skips to the next element;
      * {@link BreakSignal} exits the loop entirely.</p>
      *
      * @param st the foreach statement node
-     * @throws LarvError if the iterable expression does not evaluate to a list
+     * @throws LarvError if the iterable is not a list or map
      */
     @Override public void visitForeach(@NotNull ForeachStatement st) {
         Object iterable = evaluator.eval(st.iterable());
+
+        // ── Map iteration ────────────────────────────────────────────────
+        if (iterable instanceof java.util.Map<?, ?> rawMap) {
+            @SuppressWarnings("unchecked")
+            java.util.Map<Object, Object> map = (java.util.Map<Object, Object>) rawMap;
+            String valueVar = st.valueVariable();
+            outer:
+            for (java.util.Map.Entry<Object, Object> entry : map.entrySet()) {
+                Environment saved = context.getEnvironment();
+                context.pushScope();
+                try {
+                    context.getEnvironment().define(st.variable(), entry.getKey());
+                    if (valueVar != null) {
+                        context.getEnvironment().define(valueVar, entry.getValue());
+                    }
+                    try {
+                        st.body().forEach(this::execute);
+                    } catch (ContinueSignal ignored) {
+                    } catch (BreakSignal ignored) { break outer; }
+                } finally {
+                    context.popScope(saved);
+                }
+            }
+            return;
+        }
+
+        // ── List iteration ───────────────────────────────────────────────
         if (!(iterable instanceof java.util.List<?> rawList))
-            throw new LarvError("'for in' expects a list, got: " + iterable, st.line());
+            throw new LarvError("'for in' expects a list or map, got: " + iterable, st.line());
         @SuppressWarnings("unchecked")
         java.util.List<Object> list = (java.util.List<Object>) rawList;
         for (Object element : list) {
@@ -167,7 +202,7 @@ public class StatementExecutor implements StatementVisitor {
                 moduleObj.set(fn.name(), st.name() + "." + fn.name());
             } else if (member instanceof ConstStatement cs) {
                 moduleObj.set(cs.name(), evaluator.eval(cs.value()));
-            } else if (member instanceof LetStatement ls) {
+            } else if (member instanceof VarStatement ls) {
                 Object val = ls.expression() == null ? null : evaluator.eval(ls.expression());
                 moduleObj.set(ls.name(), val);
             }
@@ -337,12 +372,75 @@ public class StatementExecutor implements StatementVisitor {
         context.getEnvironment().define(st.name(), enumObj);
     }
 
+    /**
+     * Pushes the deferred expression onto the current scope's defer queue.
+     * It will be evaluated (LIFO) when the enclosing {@link #runBlock} exits.
+     */
+    @Override
+    public void visitDefer(@NotNull DeferStatement st) {
+        if (deferStack.isEmpty()) {
+            // top-level defer outside any block — run immediately at interpreter exit
+            // by pushing onto a synthetic scope
+            deferStack.push(new ArrayDeque<>());
+        }
+        deferStack.peek().push(st.value()); // push = LIFO
+    }
+
+    @Override
+    public void visitAtomic(@NotNull AtomicStatement st) {
+        Object init = st.initializer() == null ? null : evaluator.eval(st.initializer());
+        Object atomicInstance;
+
+        switch (st.type()) {
+            case "int" -> {
+                int val = 0;
+                if (init instanceof Double d) {
+                    val = d.intValue();
+                } else if (init != null) {
+                    throw new LarvError("atomic<int> requires a number, got: " + init.getClass().getSimpleName(), st.line());
+                }
+                atomicInstance = new java.util.concurrent.atomic.AtomicInteger(val);
+            }
+            case "long" -> {
+                long val = 0L;
+                if (init instanceof Double d) {
+                    val = d.longValue();
+                } else if (init != null) {
+                    throw new LarvError("atomic<long> requires a number, got: " + init.getClass().getSimpleName(), st.line());
+                }
+                atomicInstance = new java.util.concurrent.atomic.AtomicLong(val);
+            }
+            case "bool" -> {
+                // Uses Larv's truthiness rules (e.g., non-zero, non-null is true)
+                boolean val = init != null && TruthinessEvaluator.isTruthy(init);
+                atomicInstance = new java.util.concurrent.atomic.AtomicBoolean(val);
+            }
+            default -> {
+                // Fallback for atomic<string> or atomic<any>
+                atomicInstance = new java.util.concurrent.atomic.AtomicReference<>(init);
+            }
+        }
+
+        // 3. Define the atomic object in the current environment
+        context.getEnvironment().define(st.name(), atomicInstance);
+    }
+
+
     public void runBlock(@NotNull List<Statement> stmts) {
         Environment saved = context.getEnvironment();
         context.pushScope();
+        Deque<Expression> scopeDefers = new ArrayDeque<>();
+        deferStack.push(scopeDefers);
         try {
             stmts.forEach(this::execute);
         } finally {
+            deferStack.pop();
+            while (!scopeDefers.isEmpty()) {
+                try {
+                    evaluator.eval(scopeDefers.pop());
+                } catch (Exception ignored) {
+                }
+            }
             context.popScope(saved);
         }
     }

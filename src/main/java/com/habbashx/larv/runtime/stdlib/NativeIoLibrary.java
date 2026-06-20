@@ -35,33 +35,32 @@ import java.util.List;
  *   absPath(path)               → string   — resolve to absolute path
  */
 @Native("IO Library")
-public class NativeIoLibrary implements NativeLibrary {
+@Deprecated(since = "1.1.0") // unused by compiler & interpreter
+public class NativeIoLibrary extends  NativeLibrary {
 
-    private final ExecutionContext context;
-
-    @Contract(pure = true)
-    public NativeIoLibrary(ExecutionContext context) {
-        this.context = context;
+    public NativeIoLibrary(ExecutionContext executionContext) {
+        super(executionContext);
     }
+
 
     @Override
     public void registerAll() {
-        context.registerNative("readFile",   this::readFile);
-        context.registerNative("writeFile",  this::writeFile);
-        context.registerNative("appendFile", this::appendFile);
-        context.registerNative("readLines",  this::readLines);
-        context.registerNative("readBytes",  this::readBytes);
-        context.registerNative("writeBytes", this::writeBytes);
-        context.registerNative("deleteFile", this::deleteFile);
-        context.registerNative("fileExists", this::fileExists);
-        context.registerNative("isDir",      this::isDir);
-        context.registerNative("listDir",    this::listDir);
-        context.registerNative("makeDir",    this::makeDir);
-        context.registerNative("copyFile",   this::copyFile);
-        context.registerNative("moveFile",   this::moveFile);
-        context.registerNative("fileSize",   this::fileSize);
-        context.registerNative("cwd",        this::cwd);
-        context.registerNative("absPath",    this::absPath);
+       getExecutionContext().registerNative("readFile",   this::readFile);
+       getExecutionContext().registerNative("writeFile",  this::writeFile);
+       getExecutionContext().registerNative("appendFile", this::appendFile);
+       getExecutionContext().registerNative("readLines",  this::readLines);
+       getExecutionContext().registerNative("readBytes",  this::readBytes);
+       getExecutionContext().registerNative("writeBytes", this::writeBytes);
+       getExecutionContext().registerNative("deleteFile", this::deleteFile);
+       getExecutionContext().registerNative("fileExists", this::fileExists);
+       getExecutionContext().registerNative("isDir",      this::isDir);
+       getExecutionContext().registerNative("listDir",    this::listDir);
+       getExecutionContext().registerNative("makeDir",    this::makeDir);
+       getExecutionContext().registerNative("copyFile",   this::copyFile);
+       getExecutionContext().registerNative("moveFile",   this::moveFile);
+       getExecutionContext().registerNative("fileSize",   this::fileSize);
+       getExecutionContext().registerNative("cwd",        this::cwd);
+       getExecutionContext().registerNative("absPath",    this::absPath);
     }
 
 
@@ -69,12 +68,6 @@ public class NativeIoLibrary implements NativeLibrary {
         if (args.size() <= index || !(args.get(index) instanceof String s))
             throw new LarvError(fnName + "() expects a string path as argument " + (index + 1), -1, LarvError.Kind.RUNTIME);
         return Path.of(s);
-    }
-
-    private String stringArg(@NotNull List<Object> args, int index, String fnName) {
-        if (args.size() <= index || !(args.get(index) instanceof String s))
-            throw new LarvError(fnName + "() expects a string as argument " + (index + 1), -1, LarvError.Kind.RUNTIME);
-        return s;
     }
 
 
@@ -88,7 +81,7 @@ public class NativeIoLibrary implements NativeLibrary {
 
     private @Nullable Object writeFile(@NotNull List<Object> args) {
         try {
-            Files.writeString(pathArg(args, 0, "writeFile"), stringArg(args, 1, "writeFile"));
+            Files.writeString(pathArg(args, 0, "writeFile"), strArg(args, 1, "writeFile"));
             return null;
         } catch (IOException e) {
             throw new LarvError("writeFile() failed: " + e.getMessage(), -1, LarvError.Kind.RUNTIME);
@@ -99,7 +92,7 @@ public class NativeIoLibrary implements NativeLibrary {
         try {
             Files.writeString(
                     pathArg(args, 0, "appendFile"),
-                    stringArg(args, 1, "appendFile"),
+                    strArg(args, 1, "appendFile"),
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND
             );
             return null;

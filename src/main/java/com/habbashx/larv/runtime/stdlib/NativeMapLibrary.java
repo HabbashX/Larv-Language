@@ -33,29 +33,30 @@ import java.util.Map;
  *   mapToList(map)         → array    array of [key, value] pairs
  */
 @Native("Map Library")
-public class NativeMapLibrary implements NativeLibrary{
+@Deprecated(since = "1.1.0") // un used by compiler
+public class NativeMapLibrary extends NativeLibrary{
 
-    private final ExecutionContext context;
 
     public NativeMapLibrary(ExecutionContext context) {
-        this.context = context;
+        super(context);
+
     }
 
     @Override
     public void registerAll() {
-        context.registerNative("mapNew",           this::mapNew);
-        context.registerNative("mapSet",           this::mapSet);
-        context.registerNative("mapGet",           this::mapGet);
-        context.registerNative("mapHas",           this::mapHas);
-        context.registerNative("mapRemove",        this::mapRemove);
-        context.registerNative("mapSize",          this::mapSize);
-        context.registerNative("mapKeys",          this::mapKeys);
-        context.registerNative("mapValues",        this::mapValues);
-        context.registerNative("mapClear",         this::mapClear);
-        context.registerNative("mapIsEmpty",       this::mapIsEmpty);
-        context.registerNative("mapMerge",         this::mapMerge);
-        context.registerNative("mapContainsValue", this::mapContainsValue);
-        context.registerNative("mapToList",        this::mapToList);
+       getExecutionContext().registerNative("mapNew",           this::mapNew);
+       getExecutionContext().registerNative("mapSet",           this::mapSet);
+       getExecutionContext().registerNative("mapGet",           this::mapGet);
+       getExecutionContext().registerNative("mapHas",           this::mapHas);
+       getExecutionContext().registerNative("mapRemove",        this::mapRemove);
+       getExecutionContext().registerNative("mapSize",          this::mapSize);
+       getExecutionContext().registerNative("mapKeys",          this::mapKeys);
+       getExecutionContext().registerNative("mapValues",        this::mapValues);
+       getExecutionContext().registerNative("mapClear",         this::mapClear);
+       getExecutionContext().registerNative("mapIsEmpty",       this::mapIsEmpty);
+       getExecutionContext().registerNative("mapMerge",         this::mapMerge);
+       getExecutionContext().registerNative("mapContainsValue", this::mapContainsValue);
+       getExecutionContext().registerNative("mapToList",        this::mapToList);
     }
 
     @SuppressWarnings("unchecked")

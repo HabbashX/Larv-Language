@@ -39,41 +39,41 @@ import java.util.List;
  *   strChars(s)            → array    array of individual characters
  */
 @Native("String Library")
-public class NativeStringLibrary implements NativeLibrary {
+@Deprecated(since = "1.1.0") // unused by compiler & interpreter
+public class NativeStringLibrary extends NativeLibrary {
 
-    private final ExecutionContext context;
 
     @Contract(pure = true)
     public NativeStringLibrary(ExecutionContext context) {
-        this.context = context;
+        super(context);
     }
 
     @Override
     public void registerAll() {
-        context.registerNative("strLen",         this::strLen);
-        context.registerNative("strUpper",       this::strUpper);
-        context.registerNative("strLower",       this::strLower);
-        context.registerNative("strTrim",        this::strTrim);
-        context.registerNative("strTrimLeft",    this::strTrimLeft);
-        context.registerNative("strTrimRight",   this::strTrimRight);
-        context.registerNative("strContains",    this::strContains);
-        context.registerNative("strStartsWith",  this::strStartsWith);
-        context.registerNative("strEndsWith",    this::strEndsWith);
-        context.registerNative("strIndexOf",     this::strIndexOf);
-        context.registerNative("strSlice",       this::strSlice);
-        context.registerNative("strReplace",     this::strReplace);
-        context.registerNative("strReplaceAll",  this::strReplaceAll);
-        context.registerNative("strSplit",       this::strSplit);
-        context.registerNative("strJoin",        this::strJoin);
-        context.registerNative("strRepeat",      this::strRepeat);
-        context.registerNative("strReverse",     this::strReverse);
-        context.registerNative("strCharAt",      this::strCharAt);
-        context.registerNative("strToNumber",    this::strToNumber);
-        context.registerNative("strFromNumber",  this::strFromNumber);
-        context.registerNative("strIsEmpty",     this::strIsEmpty);
-        context.registerNative("strPadLeft",     this::strPadLeft);
-        context.registerNative("strPadRight",    this::strPadRight);
-        context.registerNative("strChars",       this::strChars);
+        getExecutionContext().registerNative("strLen",         this::strLen);
+        getExecutionContext().registerNative("strUpper",       this::strUpper);
+        getExecutionContext().registerNative("strLower",       this::strLower);
+        getExecutionContext().registerNative("strTrim",        this::strTrim);
+        getExecutionContext().registerNative("strTrimLeft",    this::strTrimLeft);
+        getExecutionContext().registerNative("strTrimRight",   this::strTrimRight);
+        getExecutionContext().registerNative("strContains",    this::strContains);
+        getExecutionContext().registerNative("strStartsWith",  this::strStartsWith);
+        getExecutionContext().registerNative("strEndsWith",    this::strEndsWith);
+        getExecutionContext().registerNative("strIndexOf",     this::strIndexOf);
+        getExecutionContext().registerNative("strSlice",       this::strSlice);
+        getExecutionContext().registerNative("strReplace",     this::strReplace);
+        getExecutionContext().registerNative("strReplaceAll",  this::strReplaceAll);
+        getExecutionContext().registerNative("strSplit",       this::strSplit);
+        getExecutionContext().registerNative("strJoin",        this::strJoin);
+        getExecutionContext().registerNative("strRepeat",      this::strRepeat);
+        getExecutionContext().registerNative("strReverse",     this::strReverse);
+        getExecutionContext().registerNative("strCharAt",      this::strCharAt);
+        getExecutionContext().registerNative("strToNumber",    this::strToNumber);
+        getExecutionContext().registerNative("strFromNumber",  this::strFromNumber);
+        getExecutionContext().registerNative("strIsEmpty",     this::strIsEmpty);
+        getExecutionContext().registerNative("strPadLeft",     this::strPadLeft);
+        getExecutionContext().registerNative("strPadRight",    this::strPadRight);
+        getExecutionContext().registerNative("strChars",       this::strChars);
     }
 
     private String str(@NotNull List<Object> args, int i, String fn) {

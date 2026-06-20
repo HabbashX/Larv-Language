@@ -31,7 +31,7 @@ import java.util.Set;
  *   }
  * </pre>
  */
-public class Environment {
+public final class Environment {
 
     /** Variable bindings for this scope only. */
     private final Map<String, Object> values   = new HashMap<>();

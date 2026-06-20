@@ -26,6 +26,7 @@ import com.habbashx.larv.parser.ast.statement.FunctionStatement;
  *
  * @see NativeFunction
  */
+@Deprecated(since = "1.1.0")
 public class UserFunction implements LarvCallable {
 
     /** The AST node that describes this function's parameters and body. */
@@ -61,7 +62,7 @@ public class UserFunction implements LarvCallable {
         Environment env = new Environment(closure);
 
         for (int i = 0; i < fn.params().size(); i++) {
-            env.define(fn.params().get(i), args.get(i));
+            env.define(fn.params().get(i).name(), args.get(i));
         }
 
         try {

@@ -33,13 +33,13 @@ import java.util.Map;
  * Timeout is fixed at 30 seconds.
  */
 @Native("Http Library")
-public class NativeHttpLibrary implements NativeLibrary {
+@Deprecated(since = "1.1.0") // unused by compiler & interpreter
+public class NativeHttpLibrary extends NativeLibrary {
 
-    private final ExecutionContext context;
     private final HttpClient client;
 
     public NativeHttpLibrary(ExecutionContext context) {
-        this.context = context;
+        super(context);
         this.client  = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -48,19 +48,14 @@ public class NativeHttpLibrary implements NativeLibrary {
 
     @Override
     public void registerAll() {
-        context.registerNative("httpGet",      this::httpGet);
-        context.registerNative("httpPost",     this::httpPost);
-        context.registerNative("httpPostJson", this::httpPostJson);
-        context.registerNative("httpPut",      this::httpPut);
-        context.registerNative("httpDelete",   this::httpDelete);
-        context.registerNative("httpRequest",  this::httpRequest);
+        getExecutionContext().registerNative("httpGet",      this::httpGet);
+        getExecutionContext().registerNative("httpPost",     this::httpPost);
+        getExecutionContext().registerNative("httpPostJson", this::httpPostJson);
+        getExecutionContext().registerNative("httpPut",      this::httpPut);
+        getExecutionContext().registerNative("httpDelete",   this::httpDelete);
+        getExecutionContext().registerNative("httpRequest",  this::httpRequest);
     }
 
-    private String strArg(@NotNull List<Object> args, int i, String fn) {
-        if (args.size() <= i || !(args.get(i) instanceof String s))
-            throw new LarvError(fn + "(): argument " + (i+1) + " must be a string", -1, LarvError.Kind.RUNTIME);
-        return s;
-    }
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> mapArg(@NotNull List<Object> args, int i) {
