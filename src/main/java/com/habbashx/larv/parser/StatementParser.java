@@ -73,7 +73,8 @@ public class StatementParser {
         int line = stream.peek().line();
 
         if (stream.check(TokenType.FUNC) || stream.check(TokenType.SYNC) ||
-                stream.check(TokenType.CORE) || stream.check(TokenType.OVERRIDE)) {
+                stream.check(TokenType.CORE) || stream.check(TokenType.OVERRIDE) ||
+                stream.check(TokenType.ASYNC)) {
             return withLine(parseFunctionDecl(), line);
         }
 
@@ -282,6 +283,7 @@ public class StatementParser {
         boolean isSync     = stream.match(TokenType.SYNC);
         boolean isCore     = stream.match(TokenType.CORE);
         boolean isOverride = stream.match(TokenType.OVERRIDE);
+        boolean isAsync    = stream.match(TokenType.ASYNC);
 
         stream.consume(TokenType.FUNC, "Expected 'func' keyword");
         String name = stream.consumeValue(TokenType.IDENTIFIER, "Expected function name");
@@ -308,12 +310,13 @@ public class StatementParser {
 
         stream.consume(TokenType.LBRACE, "Expected '{'");
 
-        return new FunctionStatement(name, parameters, parseBlock(), returnType, isSync, isCore, isOverride, -1);
+        return new FunctionStatement(name, parameters, parseBlock(), returnType, isSync, isCore, isOverride, isAsync, -1);
     }
     /** Parses {@code core [sync] func name(...) [-> type] { ... }} — non-inheritable method. */
     @Contract(" -> new")
     private @NotNull Statement parseCoreFunc() {
         boolean isSync = stream.match(TokenType.SYNC);
+        boolean isAsync = stream.match(TokenType.ASYNC);
 
         stream.consume(TokenType.FUNC, "Expected 'func' after 'core'");
         String name = stream.consumeValue(TokenType.IDENTIFIER, "Expected function name");
@@ -340,13 +343,14 @@ public class StatementParser {
 
         stream.consume(TokenType.LBRACE, "Expected '{' to open core function body");
 
-        return new FunctionStatement(name, params, parseBlock(), returnType, isSync, true, false, -1);
+        return new FunctionStatement(name, params, parseBlock(), returnType, isSync, true, false, isAsync, -1);
     }
 
     /** Parses {@code override [sync] func name(...) [-> type] { ... }} — overrides a parent method. */
     @Contract(" -> new")
     private @NotNull Statement parseOverrideFunc() {
         boolean isSync = stream.match(TokenType.SYNC);
+        boolean isAsync = stream.match(TokenType.ASYNC);
 
         stream.consume(TokenType.FUNC, "Expected 'func' after 'override'");
         String name = stream.consumeValue(TokenType.IDENTIFIER, "Expected function name");
@@ -373,7 +377,7 @@ public class StatementParser {
 
         stream.consume(TokenType.LBRACE, "Expected '{' to open override function body");
 
-        return new FunctionStatement(name, params, parseBlock(), returnType, isSync, false, true, -1);
+        return new FunctionStatement(name, params, parseBlock(), returnType, isSync, false, true, isAsync, -1);
     }
     @Contract(" -> new")
     private @NotNull Statement parseReturn() {
@@ -443,14 +447,37 @@ public class StatementParser {
             hasInvolve = true;
             stream.consume(TokenType.LBRACE, "Expected '{' after 'involve'");
             while (!stream.check(TokenType.RBRACE) && !stream.isAtEnd()) {
-                String arg = stream.consumeValue(TokenType.STRING, "Expected string argument inside 'involve { ... }'");
-                constructorArgs.add(arg);
+                constructorArgs.add(readRawArg());
                 stream.match(TokenType.COMMA);
             }
             stream.consume(TokenType.RBRACE, "Expected '}' to close 'involve' argument list");
         }
         stream.match(TokenType.SEMICOLON);
         return new JavaBindStatement(alias, className, constructorArgs, hasInvolve, line);
+    }
+
+    /**
+     * Reads a single constructor argument as raw source text inside
+     * {@code involve { ... }}.  Accepts string literals, identifiers,
+     * numbers, static field references ({@code System.in}) and nested
+     * constructor syntax ({@code Point(1, 2)}).
+     */
+    private @NotNull String readRawArg() {
+        StringBuilder sb = new StringBuilder();
+        int depth = 0;
+        while (!stream.isAtEnd()) {
+            if (depth == 0 && stream.check(TokenType.RBRACE)) break;
+            if (depth == 0 && stream.check(TokenType.COMMA)) break;
+            TokenType t = stream.peek().tokenType();
+            if (t == TokenType.LPAREN) depth++;
+            else if (t == TokenType.RPAREN) { depth--; if (depth < 0) break; }
+            sb.append(stream.advance().value());
+        }
+        String raw = sb.toString().trim();
+        if (raw.isEmpty()) {
+            throw new ParseException("Expected constructor argument inside 'involve { ... }'", stream.peek());
+        }
+        return raw;
     }
 
     /**
@@ -663,7 +690,7 @@ public class StatementParser {
             case WhileStatement      s -> new WhileStatement(s.condition(), s.body(), line);
             case ForStatement        s -> new ForStatement(s.init(), s.condition(), s.increment(), s.body(), line);
             case ForeachStatement    s -> new ForeachStatement(s.variable(), s.valueVariable(), s.iterable(), s.body(), line);
-            case FunctionStatement   s -> new FunctionStatement(s.name(), s.params(), s.body(),s.returnType(), s.isSync(), s.isCore(), s.isOverride(), line);
+            case FunctionStatement   s -> new FunctionStatement(s.name(), s.params(), s.body(),s.returnType(), s.isSync(), s.isCore(), s.isOverride(), s.isAsync(), line);
             case ReturnStatement     s -> new ReturnStatement(s.value(), line);
             case ClassStatement      s -> new ClassStatement(s.name(), s.superclassName(), s.body(), line);
             case BlockStatement      s -> new BlockStatement(s.statements(), line);

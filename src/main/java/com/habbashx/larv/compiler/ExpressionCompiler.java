@@ -54,6 +54,8 @@ public abstract class ExpressionCompiler extends CallCompiler {
                 case IndexExpression e    -> compileIndex(e);
                 case ThisExpression e     -> methodVisitor.visitVarInsn(ALOAD, 0);
                 case ClassRefExpression e -> methodVisitor.visitLdcInsn(e.name());
+                case AwaitExpression e    -> compileAwait(e);
+                case NonNullExpression e  -> compileNonNull(e);
                 case JavaCallExpression e -> throw new CompileException(
                         "Java FFI (@java) is not supported in compiled mode.", -1);
                 default -> throw new CompileException(
@@ -208,8 +210,7 @@ public abstract class ExpressionCompiler extends CallCompiler {
         methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;", false);
     }
 
-    private void compileUnary(@NotNull UnaryExpression e) {
-        if ("-".equals(e.operator())) {
+    private void compileUnary(@NotNull UnaryExpression e) {        if ("-".equals(e.operator())) {
             compileExpression(e.right());
             methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "toDouble", "(Ljava/lang/Object;)D", false);
             methodVisitor.visitInsn(DNEG);
@@ -224,6 +225,19 @@ public abstract class ExpressionCompiler extends CallCompiler {
             throw new CompileException("Unknown unary operator: " + e.operator(), -1);
         }
     }
+
+    private void compileAwait(@NotNull AwaitExpression e) {
+        compileExpression(e.expression());
+        methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "awaitValue",
+                "(Ljava/lang/Object;)Ljava/lang/Object;", false);
+    }
+
+    private void compileNonNull(@NotNull NonNullExpression e) {
+        compileExpression(e.expression());
+        methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "requireNonNullValue",
+                "(Ljava/lang/Object;)Ljava/lang/Object;", false);
+    }
+
 
     private void compileLogical(@NotNull LogicalExpression e) {
         org.objectweb.asm.Label shortCircuit = new org.objectweb.asm.Label();

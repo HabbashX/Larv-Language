@@ -1,0 +1,22 @@
+include scanner from "java.util.Scanner" involve {System.in}
+
+
+print("please enter username")
+
+scanner.nextLine()
+var username = scanner.nextLine()
+
+print(username)
+// larv input
+
+print("please enter username")
+
+print("Hello World")
+
+var username = input("Hello World")
+
+var username2 = input()
+
+
+
+print(username2)

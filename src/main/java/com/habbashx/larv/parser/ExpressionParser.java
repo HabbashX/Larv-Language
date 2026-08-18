@@ -77,6 +77,7 @@ public final class ExpressionParser {
         map.put(TokenType.FALSE, () -> new BooleanExpression(false));
         map.put(TokenType.MINUS, this::parseUnaryMinus);
         map.put(TokenType.BANG,  this::parseLogicalNot);
+        map.put(TokenType.AWAIT, this::parseAwait);
         map.put(TokenType.LBRACKET,this::parseArrayLiteral);
 
         return map;
@@ -101,6 +102,7 @@ public final class ExpressionParser {
         map.put(TokenType.LPAREN,   this::parseCall);
         map.put(TokenType.DOT,      this::parseGet);
         map.put(TokenType.LBRACKET, this::parseIndex);
+        map.put(TokenType.BANG,     this::parseNonNullAssert);
 
         return map;
     }
@@ -131,6 +133,7 @@ public final class ExpressionParser {
         map.put(TokenType.LPAREN,   Precedence.POSTFIX);
         map.put(TokenType.DOT,      Precedence.POSTFIX);
         map.put(TokenType.LBRACKET, Precedence.POSTFIX);
+        map.put(TokenType.BANG,     Precedence.POSTFIX);
 
 
         return map;
@@ -312,5 +315,24 @@ public final class ExpressionParser {
     private @NotNull Expression parseLogicalNot() {
         Expression operand = parse(Precedence.UNARY);
         return new UnaryExpression("!", operand);
+    }
+
+    /**
+     * Parses the {@code await} prefix expression: {@code await expr}.
+     * The {@code await} keyword has already been consumed as the prefix token.
+     */
+    @Contract(" -> new")
+    private @NotNull Expression parseAwait() {
+        Expression operand = parse(Precedence.UNARY);
+        return new AwaitExpression(operand);
+    }
+
+    /**
+     * Parses the postfix non-null assertion: {@code expr!}.
+     * The {@code !} has already been consumed as the infix token.
+     */
+    @Contract(" -> new")
+    private @NotNull Expression parseNonNullAssert(Expression left) {
+        return new NonNullExpression(left);
     }
 }

@@ -32,5 +32,5 @@ package com.habbashx.larv.parser.ast.expression;
  * without relying on {@code instanceof} chains.</p>
  */
 public sealed interface Expression
-        permits ArrayExpression, AssignExpression, BinaryExpression, BooleanExpression, CallExpression, ClassRefExpression, GetExpression, GroupExpression, IndexExpression, JavaCallExpression, LiteralExpression, LogicalExpression, NewExpression, NumberExpression, SetExpression, StringExpression, TernaryExpression, ThisExpression, UnaryExpression, VarExpression {
+        permits ArrayExpression, AssignExpression, AwaitExpression, BinaryExpression, BooleanExpression, CallExpression, ClassRefExpression, GetExpression, GroupExpression, IndexExpression, JavaCallExpression, LiteralExpression, LogicalExpression, NewExpression, NonNullExpression, NumberExpression, SetExpression, StringExpression, TernaryExpression, ThisExpression, UnaryExpression, VarExpression {
 }

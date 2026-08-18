@@ -60,6 +60,8 @@ public abstract class TypeInferenceCompiler extends AbstractLarvCompiler {
                 yield "double";
             }
             case UnaryExpression e   -> e.operator().equals("!") ? "bool" : "double";
+            case AwaitExpression e   -> "any";
+            case NonNullExpression e -> evaluateExpressionType(e.expression());
             case LogicalExpression e -> "bool";
             case ArrayExpression e   -> "List";
             case NewExpression e     -> e.className();

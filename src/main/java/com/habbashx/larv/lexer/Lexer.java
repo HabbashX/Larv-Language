@@ -230,6 +230,8 @@ public class Lexer {
             case "core"     -> TokenType.CORE;
             case "override" -> TokenType.OVERRIDE;
             case "defer"    -> TokenType.DEFER;
+            case "async"    -> TokenType.ASYNC;
+            case "await"    -> TokenType.AWAIT;
             case "atomic" -> TokenType.ATOMIC;
             case "volatile" -> TokenType.VOLATILE;
             default         -> TokenType.IDENTIFIER;

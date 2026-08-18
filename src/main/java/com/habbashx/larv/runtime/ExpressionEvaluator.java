@@ -94,12 +94,34 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
             case ArrayExpression   e -> visitArray(e);
             case IndexExpression   e -> visitIndex(e);
             case AssignExpression  e -> visitAssignExpr(e);
+            case AwaitExpression   e -> visitAwait(e);
+            case NonNullExpression e -> visitNonNull(e);
             default -> throw new LarvError("Unknown expression type: " + expr.getClass().getSimpleName());
         };
     }
 
     @Override public Object visitNumber(@NotNull NumberExpression e) { return e.value(); }
     @Override public Object visitString(@NotNull StringExpression e) { return e.value(); }
+
+    /** {@code await expr} — unwraps a {@link java.util.concurrent.Future}; other values pass through. */
+    public Object visitAwait(@NotNull AwaitExpression e) {
+        Object value = eval(e.expression());
+        if (value instanceof java.util.concurrent.Future<?> f) {
+            try { return f.get(); }
+            catch (Exception ex) {
+                Throwable cause = ex.getCause();
+                throw new LarvError(cause != null ? cause.getMessage() : ex.getMessage());
+            }
+        }
+        return value;
+    }
+
+    /** {@code expr!} — returns the operand if non-null, otherwise raises a runtime error. */
+    public Object visitNonNull(@NotNull NonNullExpression e) {
+        Object value = eval(e.expression());
+        if (value == null) throw new LarvError("Non-null assertion failed: value was nil.");
+        return value;
+    }
 
     /**
      * Resolves a variable name in the current scope chain.

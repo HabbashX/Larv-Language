@@ -11,6 +11,7 @@ import java.util.List;
  * <pre>
  *   func name(param1, param2, ...) { ... }
  *   func name(param1, param2, ...) : sync { ... }   // synchronized function
+ *   async func name(param1, param2, ...) { ... }    // runs on an async executor
  *   core func name(param1, param2, ...) { ... }     // non-inheritable method
  *   override func name(param1, param2, ...) { ... } // overrides a parent method
  * </pre>
@@ -31,12 +32,13 @@ public record FunctionStatement(
         boolean isSync,
         boolean isCore,
         boolean isOverride,
+        boolean isAsync,
         int line
 ) implements Statement {
 
     /** Convenience constructor for plain functions (no modifiers). */
     public FunctionStatement(String name, List<Parameter> params,String returnType, List<Statement> body, int line) {
-        this(name, params, body,returnType, false, false, false, line);
+        this(name, params, body,returnType, false, false, false, false, line);
     }
 
     public record Parameter(String name,String type) {}

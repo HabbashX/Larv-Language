@@ -58,6 +58,9 @@ public enum TokenType {
     GET,
     SET,
 
+    ASYNC,
+    AWAIT,
+
     PLUS,
     MINUS,
     STAR,

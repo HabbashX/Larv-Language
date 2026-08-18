@@ -153,6 +153,10 @@ public abstract class ClassCompiler extends StatementCompiler {
 
             for (Statement stmt : classStmt.body()) {
                 if (stmt instanceof FunctionStatement funcStmt && !funcStmt.name().equals("init")) {
+                    if (funcStmt.isAsync()) {
+                        compileAsyncFunction(internalClassName, funcStmt, cw, false);
+                        continue;
+                    }
                     int flags = ACC_PUBLIC;
                     if (funcStmt.isSync()) flags |= ACC_SYNCHRONIZED;
                     if (funcStmt.isCore()) flags |= ACC_FINAL;
@@ -180,9 +184,149 @@ public abstract class ClassCompiler extends StatementCompiler {
      * the main class.
      */
     protected void compileFunction(@NotNull FunctionStatement fn) {
+        if (fn.isAsync()) {
+            compileAsyncFunction(mainInternalName, fn, classWriter, true);
+            return;
+        }
         int flags = ACC_PUBLIC | ACC_STATIC;
         if (fn.isSync()) flags |= ACC_SYNCHRONIZED;
         compileMethodBody(mainInternalName, fn, classWriter, flags);
+    }
+
+    /**
+     * Compiles an {@code async} function into:
+     * <ol>
+     *   <li>a public body method {@code <name>$async$body} that always returns
+     *       {@code Object} (a {@code null} value is returned when the body has
+     *       no explicit return), and</li>
+     *   <li>a public wrapper method {@code <name>} that packs the arguments into
+     *       an {@code Object[]}, hands them to {@link LarvCompilerRuntime#runAsync}
+     *       and immediately returns the {@link java.util.concurrent.CompletableFuture}.
+     *   </li>
+     * </ol>
+     * Callers then apply {@code await} to the future to obtain the result.
+     */
+    protected void compileAsyncFunction(@NotNull String ownerClass, @NotNull FunctionStatement fn,
+                                        @NotNull ClassWriter cw, boolean isStatic) {
+        compileAsyncBody(ownerClass, fn, cw, isStatic);
+
+        int flags = ACC_PUBLIC | (isStatic ? ACC_STATIC : 0);
+        String desc = "(" + JAVA_OBJECT.repeat(fn.params().size()) + ")Ljava/lang/Object;";
+        MethodVisitor mv = cw.visitMethod(flags, fn.name(), desc, null, null);
+        mv.visitCode();
+
+        MethodVisitor prevMv     = this.methodVisitor;
+        LocalVarTable prevLocals = this.locals;
+
+        this.methodVisitor = mv;
+        this.locals        = new LocalVarTable(isStatic ? 0 : 1);
+        this.localVarTypes.clear();
+        this.constLocals.clear();
+        this.constLocalLabels.clear();
+        this.varLocalLabels.clear();
+        this.typeEnv.clear();
+        this.typeEnv.push(new HashMap<>());
+
+        for (Parameter p : fn.params()) {
+            this.locals.define(p.name());
+            this.localVarTypes.put(p.name(), "any");
+        }
+
+        mv.visitLdcInsn(Type.getObjectType(ownerClass));
+        if (isStatic) mv.visitInsn(ACONST_NULL);
+        else          mv.visitVarInsn(ALOAD, 0);
+        mv.visitLdcInsn(fn.name() + "$async$body");
+
+        pushInt(mv, fn.params().size());
+        mv.visitTypeInsn(ANEWARRAY, "java/lang/Object");
+        for (int i = 0; i < fn.params().size(); i++) {
+            mv.visitInsn(DUP);
+            pushInt(mv, i);
+            mv.visitVarInsn(ALOAD, this.locals.get(fn.params().get(i).name()));
+            mv.visitInsn(AASTORE);
+        }
+        int argsSlot = this.locals.define("$async$args");
+        mv.visitVarInsn(ASTORE, argsSlot);
+        mv.visitVarInsn(ALOAD, argsSlot);
+
+        mv.visitMethodInsn(INVOKESTATIC, RUNTIME, "runAsync",
+                "(Ljava/lang/Class;Ljava/lang/Object;Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/Object;", false);
+        mv.visitInsn(ARETURN);
+
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+
+        this.methodVisitor = prevMv;
+        this.locals        = prevLocals;
+    }
+
+    /**
+     * Compiles the body of an {@code async} function as a public method named
+     * {@code <name>$async$body}, forcing a {@code Ljava/lang/Object;} return so
+     * the value can be transported through the async executor.
+     */
+    private void compileAsyncBody(@NotNull String ownerClass, @NotNull FunctionStatement fn,
+                                  @NotNull ClassWriter cw, boolean isStatic) {
+        int flags = ACC_PUBLIC | (isStatic ? ACC_STATIC : 0);
+        if (fn.isSync()) flags |= ACC_SYNCHRONIZED;
+        String desc = "(" + JAVA_OBJECT.repeat(fn.params().size()) + ")Ljava/lang/Object;";
+        MethodVisitor mv = cw.visitMethod(flags, fn.name() + "$async$body", desc, null, null);
+        mv.visitCode();
+
+        MethodVisitor prevMv = this.methodVisitor;
+        LocalVarTable prevLocals = this.locals;
+        String prevReturnType = this.currentReturnType;
+
+        this.methodVisitor = mv;
+        this.locals        = new LocalVarTable(isStatic ? 0 : 1);
+        this.localVarTypes.clear();
+        this.constLocals.clear();
+        this.constLocalLabels.clear();
+        this.varLocalLabels.clear();
+        this.typeEnv.clear();
+        this.typeEnv.push(new HashMap<>());
+        this.currentReturnType = "java/lang/Object";
+
+        for (Parameter p : fn.params()) {
+            this.locals.define(p.name());
+            this.defineLocalType(p.name(), p.type());
+            this.localVarTypes.put(p.name(), "any");
+        }
+
+        try {
+            compileStatementsWithDefer(fn.body());
+        } catch (Exception e) {
+            if (debugMode) {
+                debugLog("EXCEPTION in compileAsyncBody  name=" + fn.name()
+                        + "  line=" + fn.line()
+                        + "  exception=" + e.getClass().getSimpleName()
+                        + "  message=" + e.getMessage());
+                e.printStackTrace(System.err);
+            }
+            if (e instanceof RuntimeException re) throw re;
+            throw new RuntimeException(e);
+        }
+
+        Label methodEnd = new Label();
+        mv.visitLabel(methodEnd);
+        emitConstLocalVariables(mv, methodEnd);
+
+        mv.visitInsn(ACONST_NULL);
+        mv.visitInsn(ARETURN);
+
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+
+        this.currentReturnType = prevReturnType;
+        this.methodVisitor     = prevMv;
+        this.locals            = prevLocals;
+    }
+
+    private static void pushInt(@NotNull MethodVisitor mv, int value) {
+        if      (value >= -1 && value <= 5)                 mv.visitInsn(ICONST_0 + value);
+        else if (value >= Byte.MIN_VALUE  && value <= Byte.MAX_VALUE)  mv.visitIntInsn(BIPUSH, value);
+        else if (value >= Short.MIN_VALUE && value <= Short.MAX_VALUE) mv.visitIntInsn(SIPUSH, value);
+        else                                                 mv.visitLdcInsn(value);
     }
 
     /**
