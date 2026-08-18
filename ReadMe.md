@@ -36,6 +36,7 @@ g.greet()
   - [Operators](#operators)
   - [String Concatenation](#string-concatenation)
   - [Nil](#nil)
+  - [Non-Null Assertion](#non-null-assertion)
 - [Type Annotations](#type-annotations)
 - [Control Flow](#control-flow)
   - [If / Else](#if--else)
@@ -61,6 +62,7 @@ g.greet()
 - [Concurrency](#concurrency)
   - [Atomic Variables](#atomic-variables)
   - [Volatile Variables](#volatile-variables)
+  - [Async / Await](#async--await)
   - [Synchronized Functions](#synchronized-functions)
 - [Defer](#defer)
 - [Error Handling](#error-handling)
@@ -172,6 +174,7 @@ var sql = `SELECT *
 | Logical    | `&&`  `\|\|`  `!`                      |
 | Assignment | `=`  `+=`  `-=`  `*=`  `/=`           |
 | Increment  | `++`  `--`                             |
+| Non-null   | `expr!` (postfix assertion)            |
 
 ### String Concatenation
 
@@ -189,6 +192,26 @@ var info = "Age: " + 30        // "Age: 30"
 ```larv
 var x         // x is nil
 var y = nil
+```
+
+### Non-Null Assertion
+
+The postfix `!` operator asserts that a value is not `nil`. It returns the value unchanged when non-null and raises a runtime error when the value is `nil`:
+
+```larv
+var name = getUserName()   // may be nil
+print(name!)               // "Bob", or a runtime error if name is nil
+```
+
+It is commonly paired with `try / catch` to fail fast with a descriptive error:
+
+```larv
+try {
+    var value = maybeNil()!
+    print(value)
+} catch (e) {
+    print("value was nil")
+}
 ```
 
 ---
@@ -340,7 +363,7 @@ func fib(n) {
 
 ### Function Modifiers
 
-Three modifiers can appear before `func`:
+Four modifiers can appear before `func`:
 
 **`sync`** — the function body executes under a per-function lock. Only one thread can be inside it at a time:
 
@@ -364,6 +387,17 @@ core func validate(input) {
 override func speak() {
     print("Woof!")
 }
+```
+
+**`async`** — the function body runs on a background executor thread. The call returns immediately with an async future; use `await` to obtain the final value (see [Async / Await](#async--await)):
+
+```larv
+async func fetchUser(id) {
+    return query("users", id)
+}
+
+var future = fetchUser(42)   // returns immediately
+print(await future)           // blocks until the result is ready
 ```
 
 Modifiers can be combined: `sync override func save() { ... }`
@@ -530,6 +564,25 @@ while active {
 
 `volatile` is only allowed on class fields.
 
+### Async / Await
+
+Mark a function with `async` to run its body on a shared background executor. The call returns immediately with an async future instead of blocking the caller:
+
+```larv
+async func slowTask(x) {
+    sleep(100)          // simulated work
+    return x * 2
+}
+
+var future = slowTask(21)    // returns immediately
+print(await future)           // 42 — blocks until the task completes
+```
+
+- `async` works on top-level functions and on class instance methods (combined with any other modifier).
+- `await expr` unwraps the future's result. Applied to a non-future value it simply returns the value unchanged, so `await` is always safe to write.
+- Exceptions thrown inside an async body are re-raised at the `await` site in the caller.
+- Async tasks run on a shared cached thread pool (`larv-async` daemon threads), so the JVM process exits even while tasks are in flight.
+
 ### Synchronized Functions
 
 Mark a function with `sync` to ensure exclusive access. On top-level functions a per-function lock is used; inside classes the receiver object is the monitor:
@@ -680,17 +733,26 @@ print(Math.PI)
 
 ```larv
 include scanner from "java.util.Scanner" involve {
-    "java.lang.System.in"
+    System.in
 }
 
 var line = scanner.nextLine()
 print("You typed: " + line)
 ```
 
-The `involve` block accepts the constructor arguments as strings. Larv resolves:
-- Static fields like `"java.lang.System.in"` to their actual values
-- Numeric strings like `"1024"` to the appropriate primitive type
-- Class constructor strings like `"some.Class(arg)"` to new instances
+The `involve` block accepts constructor arguments as raw text — identifiers and Java static fields may be written without quotes:
+
+```larv
+include point from "java.awt.Point" involve {
+    Point(1, 2)         // nested constructor → a new Point(1, 2)
+}
+```
+
+Larv resolves:
+- Static fields like `System.in` (or the fully-qualified `"java.lang.System.in"`) to their actual values
+- String literals like `"hello"` pass through as strings
+- Numeric arguments like `1024` convert to the appropriate primitive type
+- Nested constructor calls like `Point(1, 2)` produce a new instance of that class
 
 ---
 
