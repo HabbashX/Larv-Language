@@ -6,8 +6,11 @@ import com.habbashx.larv.parser.ast.statement.*;
 import com.habbashx.larv.parser.ast.statement.SwitchStatement.SwitchCase;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.Label;
+import org.objectweb.asm.Type;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -627,7 +630,9 @@ public abstract class StatementCompiler extends ExpressionCompiler {
             methodVisitor.visitInsn(DUP);
             if (i <= 5) methodVisitor.visitInsn(ICONST_0 + i);
             else        methodVisitor.visitIntInsn(BIPUSH, i);
-            methodVisitor.visitLdcInsn(args.get(i));
+            StaticFieldRef ref = tryResolveStaticFieldForCompile(args.get(i));
+            if (ref != null) emitStaticFieldLoad(ref);
+            else             methodVisitor.visitLdcInsn(args.get(i));
             methodVisitor.visitInsn(AASTORE);
         }
 
@@ -635,6 +640,68 @@ public abstract class StatementCompiler extends ExpressionCompiler {
                 "(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/Object;", false);
         int slot = locals.define(s.alias());
         methodVisitor.visitVarInsn(ASTORE, slot);
+    }
+
+    /**
+     * A static-field reference resolved at compile time, ready for a direct
+     * {@code GETSTATIC} instruction.
+     *
+     * @param owner internal name of the class declaring the field
+     * @param field the field name
+     * @param descriptor JVM field descriptor (e.g. {@code Ljava/io/InputStream;}, {@code I})
+     */
+    private record StaticFieldRef(String owner, String field, String descriptor) {}
+
+    /**
+     * Attempts to resolve a raw {@code involve} argument as a Java static field
+     * reference (e.g. {@code System.in} or {@code java.lang.System.in}) using the
+     * compiler JVM's classpath.  Returns {@code null} when the argument is not a
+     * resolvable static field, in which case it is passed through as a literal.
+     */
+    private @Nullable StaticFieldRef tryResolveStaticFieldForCompile(String rawArg) {
+        rawArg = rawArg.trim();
+        int dot = rawArg.lastIndexOf('.');
+        if (dot <= 0 || dot == rawArg.length() - 1) return null;
+        if (rawArg.indexOf('(') >= 0) return null;
+        String className = rawArg.substring(0, dot);
+        String fieldName = rawArg.substring(dot + 1);
+        if (!fieldName.matches("[A-Za-z_$][A-Za-z0-9_$]*")) return null;
+        try {
+            Class<?> cls = tryLoad(className);
+            if (cls == null) cls = tryLoad("java.lang." + className);
+            if (cls == null) return null;
+            Field f = cls.getField(fieldName);
+            return new StaticFieldRef(
+                    Type.getInternalName(f.getDeclaringClass()),
+                    fieldName,
+                    Type.getDescriptor(f.getType()));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static Class<?> tryLoad(String name) {
+        try { return Class.forName(name); }
+        catch (ClassNotFoundException e) { return null; }
+    }
+
+    /**
+     * Emits {@code GETSTATIC} for the resolved field, boxing primitives so the
+     * result can be stored into an {@code Object[]}.
+     */
+    private void emitStaticFieldLoad(@NotNull StaticFieldRef ref) {
+        methodVisitor.visitFieldInsn(GETSTATIC, ref.owner(), ref.field(), ref.descriptor());
+        switch (ref.descriptor()) {
+            case "I" -> methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;", false);
+            case "J" -> methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Long", "valueOf", "(J)Ljava/lang/Long;", false);
+            case "D" -> methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Double", "valueOf", "(D)Ljava/lang/Double;", false);
+            case "F" -> methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Float", "valueOf", "(F)Ljava/lang/Float;", false);
+            case "Z" -> methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;", false);
+            case "B" -> methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Byte", "valueOf", "(B)Ljava/lang/Byte;", false);
+            case "S" -> methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Short", "valueOf", "(S)Ljava/lang/Short;", false);
+            case "C" -> methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Character", "valueOf", "(C)Ljava/lang/Character;", false);
+            default  -> { /* reference type — already Object-compatible */ }
+        }
     }
 
     protected void compileAtomic(@NotNull AtomicStatement as) {

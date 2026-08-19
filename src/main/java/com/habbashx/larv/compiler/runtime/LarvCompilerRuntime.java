@@ -1022,7 +1022,7 @@ public class LarvCompilerRuntime {
             int bestScore = -1;
             for (Constructor<?> ctor : getConstructors(clazz)) {
                 if (ctor.getParameterCount() != stringArgs.length) continue;
-                Object[] mapped = tryMapArguments(ctor.getParameterTypes(), stringArgs);
+                Object[] mapped = tryMapArguments(clazz, ctor.getParameterTypes(), stringArgs);
                 if (mapped != null) {
                     int score = scoreConstructorMatch(ctor.getParameterTypes(), mapped);
                     if (score > bestScore) { bestScore = score; bestCtor = ctor; bestArgs = mapped; }
@@ -1036,11 +1036,23 @@ public class LarvCompilerRuntime {
         catch (Exception e) { throw new LarvRuntimeException("Failed to instantiate '" + className + "': " + e.getMessage(), e); }
     }
 
-    private static Object @Nullable [] tryMapArguments(Class<?>[] paramTypes, Object @NotNull [] stringArgs) {
+    private static Object @Nullable [] tryMapArguments(Class<?> enclosing, Class<?>[] paramTypes, Object @NotNull [] stringArgs) {
         Object[] mapped = new Object[stringArgs.length];
         for (int i = 0; i < stringArgs.length; i++) {
-            String rawArg = String.valueOf(stringArgs[i]);
+            Object rawValue = stringArgs[i];
             Class<?> targetType = paramTypes[i];
+            if (targetType.isInstance(rawValue)) { mapped[i] = rawValue; continue; }
+            if (rawValue instanceof Number n) {
+                if (targetType == int.class     || targetType == Integer.class) { mapped[i] = n.intValue();    continue; }
+                if (targetType == double.class  || targetType == Double.class)  { mapped[i] = n.doubleValue(); continue; }
+                if (targetType == long.class    || targetType == Long.class)    { mapped[i] = n.longValue();   continue; }
+                if (targetType == float.class   || targetType == Float.class)   { mapped[i] = n.floatValue();  continue; }
+            }
+            if (rawValue instanceof Boolean b && (targetType == boolean.class || targetType == Boolean.class)) {
+                mapped[i] = b;
+                continue;
+            }
+            if (!(rawValue instanceof String rawArg)) return null; // non-String objects only map to their own type
             Object staticField = tryResolveStaticField(rawArg);
             if (staticField != null) {
                 if (targetType.isInstance(staticField) || targetType == Object.class) {
@@ -1061,7 +1073,7 @@ public class LarvCompilerRuntime {
                 if (targetType == long.class    || targetType == Long.class)    { mapped[i] = Long.parseLong(rawArg);      continue; }
             } catch (NumberFormatException ignored) { return null; }
             if (!targetType.isPrimitive() && !targetType.isAssignableFrom(rawArg.getClass())) {
-                Object nested = tryParseAndInstantiateNested(rawArg);
+                Object nested = tryParseAndInstantiateNested(enclosing, rawArg);
                 if (nested != null && targetType.isAssignableFrom(nested.getClass())) { mapped[i] = nested; continue; }
                 return null;
             }
@@ -1094,7 +1106,7 @@ public class LarvCompilerRuntime {
         catch (ClassNotFoundException ignored) { return null; }
     }
 
-    private static @Nullable Object tryParseAndInstantiateNested(String rawArg) {
+    private static @Nullable Object tryParseAndInstantiateNested(@Nullable Class<?> enclosing, String rawArg) {
         rawArg = rawArg.trim();
         if (rawArg.endsWith(")") && rawArg.contains("(")) {
             int openParen = rawArg.indexOf('(');
@@ -1102,10 +1114,25 @@ public class LarvCompilerRuntime {
             String argsStr   = rawArg.substring(openParen + 1, rawArg.length() - 1).trim();
             String[] nestedArgs = argsStr.isEmpty() ? new String[0] : argsStr.split(",");
             for (int i = 0; i < nestedArgs.length; i++) nestedArgs[i] = nestedArgs[i].trim();
-            try { return createJavaObject(className, nestedArgs); }
+            try { return createJavaObject(resolveNestedClassName(enclosing, className), nestedArgs); }
             catch (Exception e) { return null; }
         }
         return null;
+    }
+
+    /**
+     * Resolves a nested-constructor class name, trying the name as-is, then the
+     * {@code java.lang} prefix, then the enclosing (bound) class's package so
+     * short names like {@code Point(1, 2)} work when binding {@code java.awt.Point}.
+     */
+    private static @NotNull String resolveNestedClassName(@Nullable Class<?> enclosing, @NotNull String className) {
+        if (tryLoadClass(className) != null) return className;
+        if (tryLoadClass("java.lang." + className) != null) return "java.lang." + className;
+        if (enclosing != null && enclosing.getPackage() != null) {
+            String qualified = enclosing.getPackage().getName() + "." + className;
+            if (tryLoadClass(qualified) != null) return qualified;
+        }
+        return className;
     }
 
     private static int scoreConstructorMatch(Class<?> @NotNull [] paramTypes, Object[] mappedArgs) {
