@@ -158,12 +158,11 @@ public abstract class ExpressionCompiler extends CallCompiler {
     private void compileBinary(@NotNull BinaryExpression e) {
         switch (e.operator()) {
             case "+" -> {
+                methodVisitor.visitLdcInsn("+");
                 compileExpression(e.left());
-                methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "toDouble", "(Ljava/lang/Object;)D", false);
                 compileExpression(e.right());
-                methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "toDouble", "(Ljava/lang/Object;)D", false);
-                methodVisitor.visitInsn(DADD);
-                methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Double", "valueOf", "(D)Ljava/lang/Double;", false);
+                methodVisitor.visitMethodInsn(INVOKESTATIC, "com/habbashx/larv/runtime/BinaryOperator", "apply",
+                        "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", false);
             }
             case "-" -> emitNumericOp(e, DSUB);
             case "*" -> emitNumericOp(e, DMUL);

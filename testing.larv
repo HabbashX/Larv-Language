@@ -4,3 +4,6 @@ include scanner from "java.util.Scanner" involve {System.in}
 
 print("Hello World")
 var username = scanner.nextLine()
+
+
+print(username)
