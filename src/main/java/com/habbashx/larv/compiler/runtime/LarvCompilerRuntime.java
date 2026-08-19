@@ -117,6 +117,15 @@ public class LarvCompilerRuntime {
 
     private static final ConcurrentHashMap<String, Class<?>> CLASS_LOAD_CACHE = new ConcurrentHashMap<>(32);
 
+    /** Larv interface name → parent interface name (null if none). */
+    private static final Map<String, String> INTERFACE_PARENTS = new ConcurrentHashMap<>(16);
+
+    /** Larv class name → names of the interfaces it implements. */
+    private static final Map<String, String[]> CLASS_INTERFACES = new ConcurrentHashMap<>(16);
+
+    /** Larv class name → superclass name (null if none). */
+    private static final Map<String, String> CLASS_SUPERCLASSES = new ConcurrentHashMap<>(16);
+
 
 
     private static @NotNull StringBuilder acquireSB() {
@@ -818,6 +827,57 @@ public class LarvCompilerRuntime {
         int i = (int) toDouble(index);
         if (i < 0) i = list.size() + i;
         list.set(i, value);
+    }
+
+    /**
+     * Registers a Larv interface and its optional parent interface.
+     * Called from the compiled program's {@code <clinit>}.
+     */
+    public static void registerInterface(@NotNull String name, @Nullable String parent) {
+        INTERFACE_PARENTS.put(name, parent == null ? "" : parent);
+    }
+
+    /**
+     * Registers a Larv class and its inheritance / interface metadata.
+     * Called from the compiled program's {@code <clinit>}.
+     */
+    public static void registerClass(@NotNull String name, @Nullable String superclassName,
+                                     String @Nullable [] interfaces) {
+        CLASS_SUPERCLASSES.put(name, superclassName == null ? "" : superclassName);
+        CLASS_INTERFACES.put(name, interfaces == null ? new String[0] : interfaces);
+    }
+
+    /**
+     * Implements the compiled {@code is} type-check operator: returns
+     * {@code true} when {@code target} is a {@link LarvObject} whose class
+     * (walking the superclass chain) is {@code typeName} or implements the
+     * interface {@code typeName} (including transitively-inherited interfaces).
+     */
+    public static boolean isInstance(Object target, @NotNull String typeName) {
+        if (!(target instanceof LarvObject lo)) return false;
+        String className = lo.getClassName();
+        while (className != null && !className.isEmpty()) {
+            if (className.equals(typeName)) return true;
+            String[] ifaces = CLASS_INTERFACES.get(className);
+            if (ifaces != null) {
+                for (String iface : ifaces) {
+                    if (interfaceImplies(iface, typeName)) return true;
+                }
+            }
+            className = CLASS_SUPERCLASSES.get(className);
+        }
+        return false;
+    }
+
+    /** Walks {@code iface} and its parents, returning true if any is {@code typeName}. */
+    private static boolean interfaceImplies(@NotNull String iface, @NotNull String typeName) {
+        Set<String> visited = new HashSet<>();
+        String cur = iface;
+        while (cur != null && !cur.isEmpty() && visited.add(cur)) {
+            if (cur.equals(typeName)) return true;
+            cur = INTERFACE_PARENTS.get(cur);
+        }
+        return false;
     }
 
     @Contract("null,_ -> fail")

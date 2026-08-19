@@ -39,10 +39,21 @@ public class LarvObject {
      */
     private final Map<String, LarvCallable> methods = new HashMap<>();
 
-    private final String className;
+    private String className;
 
 
     public LarvObject(String className) {
+        this.className = className;
+    }
+
+    /**
+     * Re-assigns the logical Larv class name. Used by compiled subclasses,
+     * whose constructor chain first invokes the superclass constructor (which
+     * sets the superclass name) and must then restore this class's own name.
+     *
+     * @param className the fully-qualified Larv class name of this object
+     */
+    public void setClassName(String className) {
         this.className = className;
     }
     /**

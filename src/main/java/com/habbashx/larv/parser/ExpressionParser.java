@@ -88,6 +88,7 @@ public final class ExpressionParser {
 
         map.put(TokenType.AND,      this::parseLogical);
         map.put(TokenType.OR,       this::parseLogical);
+        map.put(TokenType.IS,       this::parseIs);
         map.put(TokenType.QUESTION, this::parseTernary);
         map.put(TokenType.EQEQ, this::parseBinary);
         map.put(TokenType.NOTEQ, this::parseBinary);
@@ -119,6 +120,8 @@ public final class ExpressionParser {
 
         map.put(TokenType.EQEQ,    Precedence.EQUALITY);
         map.put(TokenType.NOTEQ,   Precedence.EQUALITY);
+
+        map.put(TokenType.IS,      Precedence.COMPARISON);
 
         map.put(TokenType.LT,      Precedence.COMPARISON);
         map.put(TokenType.GT,      Precedence.COMPARISON);
@@ -217,6 +220,18 @@ public final class ExpressionParser {
         int        precedence = precedenceOf(stream.previous().tokenType());
         Expression right     = parse(precedence);
         return new BinaryExpression(left, operator, right);
+    }
+
+    /**
+     * Parses the type-check operator: {@code expr is TypeName}.
+     * The {@code is} keyword has already been consumed as the infix token;
+     * the right operand is parsed as an identifier and wrapped in a
+     * {@link StringExpression} carrying the type name.
+     */
+    @Contract("_ -> new")
+    private @NotNull Expression parseIs(Expression left) {
+        String typeName = stream.consumeValue(TokenType.IDENTIFIER, "Expected type name after 'is'");
+        return new BinaryExpression(left, "is", new StringExpression(typeName));
     }
 
     private @NotNull Expression parseCall(Expression left) {

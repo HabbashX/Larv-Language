@@ -1,5 +1,6 @@
 package com.habbashx.larv.compiler;
 
+import com.habbashx.larv.compiler.runtime.LarvCompilerRuntime;
 import com.habbashx.larv.compiler.stdlib.LarvStdlibLoader;
 import com.habbashx.larv.compiler.util.LocalVarTable;
 import com.habbashx.larv.parser.ast.expression.Expression;
@@ -58,6 +59,7 @@ public class LarvCompiler extends ClassCompiler {
         for (Statement s : statements) {
             if      (s instanceof FunctionStatement fn)  topLevelFunctions.put(fn.name(), fn.params().size());
             else if (s instanceof ClassStatement cs)     larvClasses.put(cs.name(), cs);
+            else if (s instanceof InterfaceStatement is) larvInterfaces.put(is.name(), is);
             else if (s instanceof ModuleStatement ms)    moduleNames.put(ms.name(), mainInternalName + "$mod$" + ms.name());
             else if (s instanceof ImportStatement is && is.library() != null) importedLibs.add(is.library());
         }
@@ -66,6 +68,7 @@ public class LarvCompiler extends ClassCompiler {
         classWriter.visit(V21, ACC_PUBLIC | ACC_SUPER, mainInternalName, null, "java/lang/Object", null);
         classWriter.visitSource(mainClassName + ".larv", null);
         emitDefaultConstructor(classWriter, "java/lang/Object");
+        emitTypeRegistrations();
 
         for (Statement s : statements) {
             if (s instanceof FunctionStatement fn) compileFunction(fn);
@@ -83,7 +86,8 @@ public class LarvCompiler extends ClassCompiler {
         typeEnv.push(new HashMap<>());
 
         List<Statement> mainBody = statements.stream()
-                .filter(s -> !(s instanceof FunctionStatement) && !(s instanceof ClassStatement))
+                .filter(s -> !(s instanceof FunctionStatement) && !(s instanceof ClassStatement)
+                        && !(s instanceof InterfaceStatement))
                 .toList();
         compileStatementsWithDefer(mainBody);
 
@@ -110,5 +114,44 @@ public class LarvCompiler extends ClassCompiler {
 
 
     private void compileLarvModule(ModuleStatement ms) {
+    }
+
+    /**
+     * Emits the {@code <clinit>} static initializer for the main class, which
+     * registers every Larv interface and class (with their inheritance and
+     * interface lists) with {@link LarvCompilerRuntime} so that the compiled
+     * {@code is} type-check operator can resolve them at runtime.
+     */
+    private void emitTypeRegistrations() {
+        MethodVisitor mv = classWriter.visitMethod(ACC_STATIC, "<clinit>", "()V", null, null);
+        mv.visitCode();
+
+        for (InterfaceStatement iface : larvInterfaces.values()) {
+            mv.visitLdcInsn(iface.name());
+            if (iface.superinterfaceName() != null) mv.visitLdcInsn(iface.superinterfaceName());
+            else mv.visitInsn(ACONST_NULL);
+            mv.visitMethodInsn(INVOKESTATIC, RUNTIME, "registerInterface",
+                    "(Ljava/lang/String;Ljava/lang/String;)V", false);
+        }
+
+        for (ClassStatement cs : larvClasses.values()) {
+            mv.visitLdcInsn(cs.name());
+            if (cs.superclassName() != null) mv.visitLdcInsn(cs.superclassName());
+            else mv.visitInsn(ACONST_NULL);
+            pushInt(mv, cs.interfaces().size());
+            mv.visitTypeInsn(ANEWARRAY, "java/lang/String");
+            for (int i = 0; i < cs.interfaces().size(); i++) {
+                mv.visitInsn(DUP);
+                pushInt(mv, i);
+                mv.visitLdcInsn(cs.interfaces().get(i));
+                mv.visitInsn(AASTORE);
+            }
+            mv.visitMethodInsn(INVOKESTATIC, RUNTIME, "registerClass",
+                    "(Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;)V", false);
+        }
+
+        mv.visitInsn(RETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
     }
 }

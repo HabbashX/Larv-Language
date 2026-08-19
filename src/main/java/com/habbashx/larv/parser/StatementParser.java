@@ -55,6 +55,7 @@ public class StatementParser {
         map.put(TokenType.CONTINUE, () -> new ContinueStatement(-1));
         map.put(TokenType.RETURN,   this::parseReturn);
         map.put(TokenType.CLASS,    this::parseClassDecl);
+        map.put(TokenType.INTERFACE, this::parseInterfaceDecl);
         map.put(TokenType.INCLUDE,  this::parseJavaBind);
         map.put(TokenType.IMPORT,   this::parseImport);
         map.put(TokenType.MODULE,   this::parseModule);
@@ -391,13 +392,54 @@ public class StatementParser {
         if (stream.match(TokenType.COLON)) {
             superclassName = stream.consumeValue(TokenType.IDENTIFIER, "Expected superclass name after ':'");
         }
+        List<String> interfaces = new ArrayList<>();
+        if (stream.match(TokenType.IMPLEMENTS)) {
+            do {
+                interfaces.add(stream.consumeValue(TokenType.IDENTIFIER, "Expected interface name after 'implements'"));
+            } while (stream.match(TokenType.COMMA));
+        }
         stream.consume(TokenType.LBRACE, "Expected '{' to open class body");
         List<Statement> body = new ArrayList<>();
         while (!stream.check(TokenType.RBRACE) && !stream.isAtEnd()) {
             body.add(parse());
         }
         stream.consume(TokenType.RBRACE, "Expected '}' to close class body");
-        return new ClassStatement(name, superclassName, body, -1);
+        return new ClassStatement(name, superclassName, interfaces, body, -1);
+    }
+
+    /**
+     * Parses an interface declaration:
+     * <pre>
+     *   interface Name { func a() { } func b() { } }
+     *   interface Name : Parent { ... }              // interface inheritance
+     * </pre>
+     * Interface methods are abstract signatures — their bodies must be empty.
+     */
+    @Contract(" -> new")
+    private @NotNull Statement parseInterfaceDecl() {
+        String name = stream.consumeValue(TokenType.IDENTIFIER, "Expected interface name after 'interface'");
+        String superinterfaceName = null;
+        if (stream.match(TokenType.COLON)) {
+            superinterfaceName = stream.consumeValue(TokenType.IDENTIFIER, "Expected parent interface name after ':'");
+        }
+        stream.consume(TokenType.LBRACE, "Expected '{' to open interface body");
+        List<FunctionStatement> methods = new ArrayList<>();
+        while (!stream.check(TokenType.RBRACE) && !stream.isAtEnd()) {
+            if (!(stream.check(TokenType.FUNC) || stream.check(TokenType.SYNC) ||
+                    stream.check(TokenType.CORE) || stream.check(TokenType.OVERRIDE) ||
+                    stream.check(TokenType.ASYNC))) {
+                throw new ParseException("Only 'func' method signatures are allowed inside an interface", stream.peek());
+            }
+            FunctionStatement fn = (FunctionStatement) parseFunctionDecl();
+            if (!fn.body().isEmpty()) {
+                throw new ParseException(
+                        "Interface method '" + fn.name() + "' cannot have a body — declare abstract signatures with '{}'",
+                        stream.previous());
+            }
+            methods.add(fn);
+        }
+        stream.consume(TokenType.RBRACE, "Expected '}' to close interface body");
+        return new InterfaceStatement(name, superinterfaceName, methods, -1);
     }
 
     @Contract(" -> new")
@@ -692,7 +734,8 @@ public class StatementParser {
             case ForeachStatement    s -> new ForeachStatement(s.variable(), s.valueVariable(), s.iterable(), s.body(), line);
             case FunctionStatement   s -> new FunctionStatement(s.name(), s.params(), s.body(),s.returnType(), s.isSync(), s.isCore(), s.isOverride(), s.isAsync(), line);
             case ReturnStatement     s -> new ReturnStatement(s.value(), line);
-            case ClassStatement      s -> new ClassStatement(s.name(), s.superclassName(), s.body(), line);
+            case ClassStatement      s -> new ClassStatement(s.name(), s.superclassName(), s.interfaces(), s.body(), line);
+            case InterfaceStatement  s -> new InterfaceStatement(s.name(), s.superinterfaceName(), s.methods(), line);
             case BlockStatement      s -> new BlockStatement(s.statements(), line);
             case BreakStatement      s -> new BreakStatement(line);
             case ContinueStatement   s -> new ContinueStatement(line);

@@ -184,6 +184,14 @@ public abstract class ExpressionCompiler extends CallCompiler {
             }
             case "==" -> emitObjCompare(e, "equalEqual");
             case "!=" -> emitObjCompare(e, "notEqual");
+            case "is" -> {
+                String typeName = e.right() instanceof StringExpression se ? se.value() : "nil";
+                compileExpression(e.left());
+                methodVisitor.visitLdcInsn(typeName);
+                methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "isInstance",
+                        "(Ljava/lang/Object;Ljava/lang/String;)Z", false);
+                methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;", false);
+            }
             case "<"  -> emitObjCompare(e, "lessThan");
             case "<=" -> emitObjCompare(e, "lessEq");
             case ">"  -> emitObjCompare(e, "greaterThan");
@@ -267,6 +275,9 @@ public abstract class ExpressionCompiler extends CallCompiler {
     }
 
     private void compileNew(@NotNull NewExpression e) {
+        if (larvInterfaces.containsKey(e.className())) {
+            throw new CompileException("Cannot instantiate interface '" + e.className() + "' — interfaces are not constructible", -1);
+        }
         methodVisitor.visitTypeInsn(NEW, e.className());
         methodVisitor.visitInsn(DUP);
         for (Expression arg : e.args()) compileExpression(arg);

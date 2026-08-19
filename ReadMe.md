@@ -55,6 +55,7 @@ g.greet()
   - [Constructor](#constructor)
   - [this](#this)
   - [Inheritance](#inheritance)
+  - [Interfaces](#interfaces)
   - [Method Modifiers](#method-modifiers)
   - [Property Accessors](#property-accessors)
 - [Modules](#modules)
@@ -175,6 +176,7 @@ var sql = `SELECT *
 | Assignment | `=`  `+=`  `-=`  `*=`  `/=`           |
 | Increment  | `++`  `--`                             |
 | Non-null   | `expr!` (postfix assertion)            |
+| Type check | `expr is Type` (instance-of / interface) |
 
 ### String Concatenation
 
@@ -490,6 +492,66 @@ class Dog : Animal {
 var d = new Dog("Rex")
 d.speak()   // Rex barks!
 ```
+
+### Interfaces
+
+An `interface` declares a contract of method signatures (empty `{}` bodies are required and ignored) that implementing classes must satisfy:
+
+```larv
+interface Shape {
+    func area() { }
+    func perimeter() { }
+}
+```
+
+A class implements one or more interfaces with the `implements` keyword, and may combine them with a superclass:
+
+```larv
+class Circle implements Shape {
+    func constructor(radius) {
+        this.radius = radius
+    }
+    func area() {
+        return 3.14159 * this.radius * this.radius
+    }
+    func perimeter() {
+        return 2 * 3.14159 * this.radius
+    }
+}
+
+class ColoredCircle : Circle implements Named {
+    func constructor(radius, color) {
+        this.radius = radius
+        this.color  = color
+    }
+}
+```
+
+Compliance is enforced automatically: a class must implement every interface method (matching by name and parameter count, including methods inherited from ancestor classes and parent interfaces), or construction fails. Methods inherited from a superclass also satisfy the contract.
+
+Interfaces can extend other interfaces with `:`:
+
+```larv
+interface Named {
+    func name() { }
+}
+
+interface Labeled : Named {
+    func label() { }
+}
+```
+
+The `is` operator performs a runtime type check — it is `true` when the left operand's class matches the type, is a subclass of it, or implements the interface (transitively, including inherited interfaces):
+
+```larv
+var c = new Circle(2)
+print(c is Circle)     // true
+print(c is Shape)      // true  (implements Shape)
+print(c is Named)      // true  (Labeled extends Named)
+print(5 is Shape)      // false
+```
+
+Interfaces are abstract contracts — `new` on an interface is an error in both the interpreter and the compiled mode.
 
 ### Method Modifiers
 

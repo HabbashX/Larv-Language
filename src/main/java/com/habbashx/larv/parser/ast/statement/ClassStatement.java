@@ -8,7 +8,9 @@ import java.util.List;
  * <p>Syntax:</p>
  * <pre>
  *   class ClassName { ... }
- *   class ChildClass : ParentClass { ... }   // inheritance
+ *   class ChildClass : ParentClass { ... }                    // inheritance
+ *   class ClassName implements I1, I2 { ... }                 // interfaces
+ *   class ChildClass : ParentClass implements I1, I2 { ... }
  * </pre>
  *
  * <p>When executed, the class is registered in the
@@ -21,13 +23,14 @@ import java.util.List;
  *
  * @param name           the class name
  * @param superclassName the name of the parent class, or {@code null} if none
+ * @param interfaces     the interface names this class declares it implements
  * @param body           the statements inside the class body
  * @param line           the 1-based source line of the {@code class} keyword
  */
-public record ClassStatement(String name, String superclassName, List<Statement> body, int line) implements Statement {
+public record ClassStatement(String name, String superclassName, List<String> interfaces, List<Statement> body, int line) implements Statement {
 
     /** Convenience constructor for a class with no superclass. */
     public ClassStatement(String name, List<Statement> body, int line) {
-        this(name, null, body, line);
+        this(name, null, List.of(), body, line);
     }
 }

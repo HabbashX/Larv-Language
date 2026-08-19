@@ -205,6 +205,9 @@ public class Lexer {
             case "break"    -> TokenType.BREAK;
             case "continue" -> TokenType.CONTINUE;
             case "class"    -> TokenType.CLASS;
+            case "interface" -> TokenType.INTERFACE;
+            case "implements" -> TokenType.IMPLEMENTS;
+            case "is"       -> TokenType.IS;
             case "new"      -> TokenType.NEW;
             case "this"     -> TokenType.THIS;
             case "include"  -> TokenType.INCLUDE;

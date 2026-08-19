@@ -1,6 +1,7 @@
 package com.habbashx.larv.runtime;
 
 import com.habbashx.larv.parser.ast.statement.ClassStatement;
+import com.habbashx.larv.parser.ast.statement.InterfaceStatement;
 import com.habbashx.larv.parser.ast.statement.FunctionStatement;
 import com.habbashx.larv.runtime.ffi.JavaClassRegistry;
 import java.nio.file.Path;
@@ -37,7 +38,6 @@ import java.util.function.Function;
  *       file imports.</li>
  * </ul>
  */
-@Deprecated(since = "1.1.0") // unused by compiler
 public class ExecutionContext {
 
     /** The currently active lexical scope. */
@@ -55,6 +55,9 @@ public class ExecutionContext {
 
     /** User-defined classes keyed by their declared name. */
     private final Map<String, ClassStatement> classes = new HashMap<>();
+
+    /** User-defined interfaces keyed by their declared name. */
+    private final Map<String, InterfaceStatement> interfaces = new HashMap<>();
 
     /**
      * Native (Java-backed) functions keyed by name.
@@ -136,6 +139,18 @@ public class ExecutionContext {
      * @return the {@link ClassStatement}, or {@code null} if not declared
      */
     public ClassStatement getClass(String name) { return classes.get(name); }
+
+    /** Registers an interface declaration under its name. */
+    public void defineInterface(String name, InterfaceStatement iface) { interfaces.put(name, iface); }
+
+    /**
+     * @return the {@link InterfaceStatement} registered under {@code name},
+     *         or {@code null} if none
+     */
+    public InterfaceStatement getInterface(String name) { return interfaces.get(name); }
+
+    /** Returns {@code true} if {@code name} refers to a registered interface. */
+    public boolean isInterface(String name) { return interfaces.containsKey(name); }
 
     /**
      * Registers a native (Java-backed) function callable from Larv code.

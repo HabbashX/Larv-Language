@@ -64,6 +64,7 @@ public class StatementExecutor implements StatementVisitor {
         map.put(ReturnStatement.class,           s -> visitReturn((ReturnStatement) s));
         map.put(FunctionStatement.class,         s -> visitFunction((FunctionStatement) s));
         map.put(ClassStatement.class,            s -> visitClass((ClassStatement) s));
+        map.put(InterfaceStatement.class,        s -> visitInterface((InterfaceStatement) s));
         map.put(JavaBindStatement.class,         s -> visitJavaBind((JavaBindStatement) s));
         map.put(ImportStatement.class,           s -> visitImport((ImportStatement) s));
         map.put(TryCatchStatement.class,         s -> visitTryCatch((TryCatchStatement) s));
@@ -254,7 +255,7 @@ public class StatementExecutor implements StatementVisitor {
     @Override public void visitReturn(@NotNull ReturnStatement st) { throw new ReturnSignal(evaluator.eval(st.value())); }
     @Override public void visitFunction(FunctionStatement st)      { context.defineFunction(st.name(), st); }
     @Override public void visitClass(ClassStatement st)            { context.defineClass(st.name(), st); }
-
+    @Override public void visitInterface(InterfaceStatement st)    { context.defineInterface(st.name(), st); }
     @Override public void visitJavaBind(@NotNull JavaBindStatement st) {
         if (st.hasInvolve()) context.getJavaRegistry().bindInstance(st.alias(), st.className(), st.constructorArgs());
         else                 context.getJavaRegistry().bind(st.alias(), st.className());

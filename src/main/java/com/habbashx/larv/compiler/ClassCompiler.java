@@ -1,12 +1,15 @@
 package com.habbashx.larv.compiler;
 
 import com.habbashx.larv.compiler.util.LocalVarTable;
+import com.habbashx.larv.compiler.exception.CompileException;
 import com.habbashx.larv.parser.ast.statement.*;
 import com.habbashx.larv.parser.ast.statement.FunctionStatement.Parameter;
 import org.jetbrains.annotations.NotNull;
 import org.objectweb.asm.*;
 
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 
 import static org.objectweb.asm.Opcodes.*;
 
@@ -34,6 +37,7 @@ public abstract class ClassCompiler extends StatementCompiler {
      * and appends it to {@link #output}.
      */
     protected void compileLarvClass(@NotNull ClassStatement classStmt) {
+        validateInterfaceCompliance(classStmt);
         this.currentClassStatement = classStmt;
         String internalClassName = classStmt.name();
         String superInternalName = classStmt.superclassName() != null
@@ -100,6 +104,9 @@ public abstract class ClassCompiler extends StatementCompiler {
                 noArgCtor.visitVarInsn(ALOAD, 0);
                 if (classStmt.superclassName() != null) {
                     noArgCtor.visitMethodInsn(INVOKESPECIAL, superInternalName, "<init>", "()V", false);
+                    noArgCtor.visitVarInsn(ALOAD, 0);
+                    noArgCtor.visitLdcInsn(internalClassName);
+                    noArgCtor.visitMethodInsn(INVOKEVIRTUAL, LARV_OBJ, "setClassName", "(Ljava/lang/String;)V", false);
                 } else {
                     noArgCtor.visitLdcInsn(internalClassName);
                     noArgCtor.visitMethodInsn(INVOKESPECIAL, LARV_OBJ, "<init>", "(Ljava/lang/String;)V", false);
@@ -125,6 +132,9 @@ public abstract class ClassCompiler extends StatementCompiler {
             ctor.visitVarInsn(ALOAD, 0);
             if (classStmt.superclassName() != null) {
                 ctor.visitMethodInsn(INVOKESPECIAL, superInternalName, "<init>", "()V", false);
+                ctor.visitVarInsn(ALOAD, 0);
+                ctor.visitLdcInsn(internalClassName);
+                ctor.visitMethodInsn(INVOKEVIRTUAL, LARV_OBJ, "setClassName", "(Ljava/lang/String;)V", false);
             } else {
                 ctor.visitLdcInsn(internalClassName);
                 ctor.visitMethodInsn(INVOKESPECIAL, LARV_OBJ, "<init>", "(Ljava/lang/String;)V", false);
@@ -322,11 +332,48 @@ public abstract class ClassCompiler extends StatementCompiler {
         this.locals            = prevLocals;
     }
 
-    private static void pushInt(@NotNull MethodVisitor mv, int value) {
+    protected static void pushInt(@NotNull MethodVisitor mv, int value) {
         if      (value >= -1 && value <= 5)                 mv.visitInsn(ICONST_0 + value);
         else if (value >= Byte.MIN_VALUE  && value <= Byte.MAX_VALUE)  mv.visitIntInsn(BIPUSH, value);
         else if (value >= Short.MIN_VALUE && value <= Short.MAX_VALUE) mv.visitIntInsn(SIPUSH, value);
         else                                                 mv.visitLdcInsn(value);
+    }
+
+    /**
+     * Verifies that {@code clazz} implements every method required by its
+     * declared interfaces (transitively, including inherited interfaces).
+     * The check accounts for methods inherited from ancestor classes.
+     */
+    private void validateInterfaceCompliance(@NotNull ClassStatement clazz) {
+        if (clazz.interfaces().isEmpty()) return;
+        Set<String> implemented = classMethodKeys(clazz);
+        Set<String> required    = new HashSet<>();
+        for (String iface : clazz.interfaces()) addInterfaceMethodKeys(iface, required);
+        for (String key : required) {
+            if (!implemented.contains(key)) {
+                throw new CompileException("Class '" + clazz.name() + "' does not implement method '" + key + "' required by its interface(s)", -1);
+            }
+        }
+    }
+
+    /** Collects {@code name#arity} keys for every method in {@code clazz} and its ancestor classes. */
+    private @NotNull Set<String> classMethodKeys(@NotNull ClassStatement clazz) {
+        Set<String> keys = new HashSet<>();
+        for (ClassStatement cur = clazz; cur != null;
+             cur = cur.superclassName() != null ? larvClasses.get(cur.superclassName()) : null) {
+            for (Statement s : cur.body()) {
+                if (s instanceof FunctionStatement fn) keys.add(fn.name() + "#" + fn.params().size());
+            }
+        }
+        return keys;
+    }
+
+    /** Collects {@code name#arity} keys required by {@code iface} and its parent interfaces. */
+    private void addInterfaceMethodKeys(String iface, @NotNull Set<String> out) {
+        InterfaceStatement decl = larvInterfaces.get(iface);
+        if (decl == null) throw new CompileException("Undefined interface '" + iface + "'", -1);
+        if (decl.superinterfaceName() != null) addInterfaceMethodKeys(decl.superinterfaceName(), out);
+        for (FunctionStatement m : decl.methods()) out.add(m.name() + "#" + m.params().size());
     }
 
     /**

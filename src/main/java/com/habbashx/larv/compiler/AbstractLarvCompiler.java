@@ -97,6 +97,9 @@ public abstract class AbstractLarvCompiler {
     /** All Larv class declarations keyed by name. */
     protected final Map<String, ClassStatement> larvClasses = new HashMap<>();
 
+    /** All Larv interface declarations keyed by name. */
+    protected final Map<String, InterfaceStatement> larvInterfaces = new HashMap<>();
+
     /** Library names referenced by {@code import} statements. */
     protected final Set<String> importedLibs = new LinkedHashSet<>();
 

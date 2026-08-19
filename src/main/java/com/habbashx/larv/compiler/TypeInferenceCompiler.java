@@ -56,7 +56,7 @@ public abstract class TypeInferenceCompiler extends AbstractLarvCompiler {
                 yield "any";
             }
             case BinaryExpression e -> {
-                if (List.of("==", "!=", "<", "<=", ">", ">=").contains(e.operator())) yield "bool";
+                if (List.of("==", "!=", "<", "<=", ">", ">=", "is").contains(e.operator())) yield "bool";
                 yield "double";
             }
             case UnaryExpression e   -> e.operator().equals("!") ? "bool" : "double";

@@ -75,6 +75,9 @@ public interface StatementVisitor {
     /** Registers a user-defined class in the execution context. */
     void visitClass(ClassStatement st);
 
+    /** Registers a user-defined interface in the execution context. */
+    void visitInterface(InterfaceStatement st);
+
     /** Binds a Java class or instance to a short alias for FFI use. */
     void visitJavaBind(JavaBindStatement st);
 

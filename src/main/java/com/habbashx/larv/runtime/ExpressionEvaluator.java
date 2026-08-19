@@ -6,13 +6,16 @@ import com.habbashx.larv.parser.ast.expression.visitor.ExpressionVisitor;
 import com.habbashx.larv.parser.ast.statement.ClassStatement;
 import com.habbashx.larv.parser.ast.statement.ConstStatement;
 import com.habbashx.larv.parser.ast.statement.FunctionStatement;
+import com.habbashx.larv.parser.ast.statement.InterfaceStatement;
 import com.habbashx.larv.parser.ast.statement.Statement;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Tree-walking evaluator for all {@link Expression} AST nodes.
@@ -140,6 +143,10 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
      */
     @Override
     public Object visitBinary(@NotNull BinaryExpression e) {
+        if ("is".equals(e.operator())) {
+            String typeName = e.right() instanceof StringExpression se ? se.value() : String.valueOf(eval(e.right()));
+            return isInstance(eval(e.left()), typeName);
+        }
         Object left  = eval(e.left());
         Object right = eval(e.right());
         return BinaryOperator.apply(e.operator(), left, right);
@@ -239,6 +246,8 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
     @Override
     public Object visitNew(@NotNull NewExpression e) {
         String className = e.className();
+        if (context.isInterface(className))
+            throw new LarvError("Cannot instantiate interface '" + className + "' — interfaces are not constructible");
         var clazz = context.getClass(className);
         if (clazz == null) throw new LarvError("Undefined class '" + className + "'");
 
@@ -247,6 +256,8 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
         Map<String, FunctionStatement> methods = collectInheritedMethods(clazz);
         obj.set("__methods__", methods);
         obj.set("__class__", className);
+        obj.set("__interfaces__", collectTransitiveInterfaces(clazz));
+        validateInterfaceCompliance(clazz, methods);
 
         for (Statement s : clazz.body()) {
             if (s instanceof ConstStatement cs) {
@@ -416,6 +427,87 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
         }
 
         return methods;
+    }
+
+    /**
+     * Computes the set of interfaces implemented by {@code clazz}, transitively:
+     * its own declared interfaces, the interfaces of every ancestor class, and
+     * every parent interface of those interfaces.
+     *
+     * @param clazz the class to inspect
+     * @return the transitive interface-name set
+     */
+    private @NotNull Set<String> collectTransitiveInterfaces(@NotNull ClassStatement clazz) {
+        Set<String> result = new HashSet<>();
+        for (ClassStatement cur = clazz; cur != null; cur = parentOf(cur)) {
+            for (String iface : cur.interfaces()) addInterfaceTransitively(iface, result);
+        }
+        return result;
+    }
+
+    /** Returns the parent {@link ClassStatement}, or {@code null} if none. */
+    private ClassStatement parentOf(@NotNull ClassStatement clazz) {
+        return clazz.superclassName() == null ? null : context.getClass(clazz.superclassName());
+    }
+
+    /** Adds {@code iface} and all of its parent interfaces to {@code out}. */
+    private void addInterfaceTransitively(String iface, @NotNull Set<String> out) {
+        if (!out.add(iface)) return;
+        InterfaceStatement decl = context.getInterface(iface);
+        if (decl == null) return;
+        if (decl.superinterfaceName() != null) addInterfaceTransitively(decl.superinterfaceName(), out);
+    }
+
+    /**
+     * Verifies that {@code clazz} (using the already-collected {@code methods})
+     * implements every method declared by its interfaces, transitively.
+     * Unknown interface names and missing methods raise an error.
+     */
+    private void validateInterfaceCompliance(@NotNull ClassStatement clazz, @NotNull Map<String, FunctionStatement> methods) {
+        Set<String> implemented = new HashSet<>();
+        for (FunctionStatement fn : methods.values()) {
+            implemented.add(methodKey(fn.name(), fn.params().size()));
+        }
+        Set<String> required = new HashSet<>();
+        for (String iface : clazz.interfaces()) addRequiredInterfaceMethods(iface, required);
+        for (String key : required) {
+            if (!implemented.contains(key))
+                throw new LarvError("Class '" + clazz.name() + "' does not implement method '" + key + "' required by its interface(s)");
+        }
+    }
+
+    /** Collects {@code name#arity} keys for {@code iface} and its parents. */
+    private void addRequiredInterfaceMethods(String iface, @NotNull Set<String> out) {
+        InterfaceStatement decl = context.getInterface(iface);
+        if (decl == null) throw new LarvError("Undefined interface '" + iface + "'");
+        if (decl.superinterfaceName() != null) addRequiredInterfaceMethods(decl.superinterfaceName(), out);
+        for (FunctionStatement m : decl.methods()) out.add(methodKey(m.name(), m.params().size()));
+    }
+
+    private static @NotNull String methodKey(String name, int arity) {
+        return name + "#" + arity;
+    }
+
+    /**
+     * Implements the {@code is} type-check operator: returns {@code true} when
+     * {@code target} is an instance of the class or interface {@code typeName}
+     * (including subclasses and transitively-implemented interfaces).
+     *
+     * @param target   the value to test
+     * @param typeName the class or interface name
+     * @return {@code true} if the target is an instance of the given type
+     */
+    private boolean isInstance(Object target, String typeName) {
+        if (!(target instanceof LarvObject obj)) return false;
+        Object cls = obj.get("__class__");
+        if (!(cls instanceof String className)) return false;
+        for (ClassStatement cur = context.getClass(className); cur != null; cur = parentOf(cur)) {
+            if (cur.name().equals(typeName)) return true;
+            for (String iface : collectTransitiveInterfaces(cur)) {
+                if (iface.equals(typeName)) return true;
+            }
+        }
+        return false;
     }
 
     /**
