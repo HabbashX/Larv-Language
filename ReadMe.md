@@ -11,7 +11,7 @@ A statically-compiled, dynamically-typed programming language that runs on the J
 import "string"
 
 class Greeter {
-    func init(name) {
+    func constructor(name) {
         this.name = name
     }
 
@@ -424,7 +424,7 @@ func fullName(first: string, last: string) -> string {
 
 ```larv
 class Animal {
-    func init(name, sound) {
+    func constructor(name, sound) {
         this.name  = name
         this.sound = sound
     }
@@ -440,7 +440,7 @@ dog.speak()
 
 ### Constructor
 
-The `init` method is the constructor. It is called automatically when the object is created with `new`. Any number of parameters are supported.
+The `constructor` method is the constructor. It is called automatically when the object is created with `new`. Any number of parameters are supported.
 
 ### this
 
@@ -448,7 +448,7 @@ Inside any method, `this` refers to the current object instance. Use it to read 
 
 ```larv
 class Counter {
-    func init() {
+    func constructor() {
         this.count = 0
     }
 
@@ -468,7 +468,7 @@ A class can extend another class using `:` after the class name. The child class
 
 ```larv
 class Animal {
-    func init(name) {
+    func constructor(name) {
         this.name = name
     }
 
@@ -478,7 +478,7 @@ class Animal {
 }
 
 class Dog : Animal {
-    func init(name) {
+    func constructor(name) {
         this.name = name
     }
 
@@ -589,7 +589,7 @@ Mark a function with `sync` to ensure exclusive access. On top-level functions a
 
 ```larv
 class BankAccount {
-    func init(balance) {
+    func constructor(balance) {
         this.balance = balance
     }
 
@@ -702,7 +702,7 @@ svc.createUser("Alice")
 import "jdbc"
 
 class UserService {
-    func init(alias) {
+    func constructor(alias) {
         this.alias = alias
     }
 

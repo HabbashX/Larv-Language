@@ -16,7 +16,7 @@ import java.util.List;
  * statements are stored as-is; they are inspected when {@code new ClassName()}
  * is evaluated to collect method declarations.</p>
  *
- * <p>The special method {@code init} acts as the constructor: it is called
+ * <p>The special method {@code constructor} acts as the constructor: it is called
  * automatically during {@code new} with the provided arguments.</p>
  *
  * @param name           the class name

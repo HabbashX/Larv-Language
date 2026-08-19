@@ -85,7 +85,7 @@ public abstract class ClassCompiler extends StatementCompiler {
             }
 
             FunctionStatement initFunc = classStmt.body().stream()
-                    .filter(s -> s instanceof FunctionStatement fs && fs.name().equals("init"))
+                    .filter(s -> s instanceof FunctionStatement fs && fs.name().equals("constructor"))
                     .map(s -> (FunctionStatement) s)
                     .findFirst().orElse(null);
 
@@ -152,7 +152,7 @@ public abstract class ClassCompiler extends StatementCompiler {
             this.inConstructor = false;
 
             for (Statement stmt : classStmt.body()) {
-                if (stmt instanceof FunctionStatement funcStmt && !funcStmt.name().equals("init")) {
+                if (stmt instanceof FunctionStatement funcStmt && !funcStmt.name().equals("constructor")) {
                     if (funcStmt.isAsync()) {
                         compileAsyncFunction(internalClassName, funcStmt, cw, false);
                         continue;

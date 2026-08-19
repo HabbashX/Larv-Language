@@ -10,7 +10,7 @@ import java.util.List;
  * <p>At runtime, the evaluator looks up {@link #className()} in the class
  * registry, creates a fresh {@link com.habbashx.larv.runtime.LarvObject},
  * copies the class body's method declarations onto the object, and invokes
- * the {@code init} method (if present) with the provided arguments.</p>
+ * the {@code constructor} method (if present) with the provided arguments.</p>
  *
  * @param className the name of the class to instantiate
  * @param args      the constructor arguments (evaluated left-to-right)

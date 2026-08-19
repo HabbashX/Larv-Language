@@ -1,6 +1,5 @@
 package com.habbashx.larv.compiler.runtime;
 
-import com.habbashx.larv.runtime.LarvObject;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;

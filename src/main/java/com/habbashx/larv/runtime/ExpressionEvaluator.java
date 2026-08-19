@@ -229,7 +229,7 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
      *   <li>Looks up the class in the registry.</li>
      *   <li>Creates a fresh {@link LarvObject}.</li>
      *   <li>Collects method declarations from the class body onto {@code __methods__}.</li>
-     *   <li>Pushes a new scope, binds {@code this}, and calls {@code init} if present.</li>
+     *   <li>Pushes a new scope, binds {@code this}, and calls {@code constructor} if present.</li>
      * </ol>
      *
      * @param e the new-expression node
@@ -254,7 +254,7 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
             }
         }
 
-        FunctionStatement init = methods.get("init");
+        FunctionStatement init = methods.get("constructor");
         if (init != null) invoker.invokeMethod(init, obj, evalAll(e.args()));
 
         return obj;

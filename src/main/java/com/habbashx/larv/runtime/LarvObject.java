@@ -12,7 +12,7 @@ import java.util.Map;
  * <p>A {@code LarvObject} is essentially a bag of named fields and methods.
  * It is created by evaluating a {@code new ClassName()} expression, which
  * copies the class body's method declarations onto the object and then
- * invokes the {@code init} method if present.</p>
+ * invokes the {@code constructor} method if present.</p>
  *
  * <h2>Fields vs Methods</h2>
  * <p>Fields are ordinary name-to-value bindings stored in {@link #fields}.
