@@ -98,6 +98,7 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
             case IndexExpression   e -> visitIndex(e);
             case AssignExpression  e -> visitAssignExpr(e);
             case AwaitExpression   e -> visitAwait(e);
+            case GroupExpression   e -> visitGroup(e);
             case NonNullExpression e -> visitNonNull(e);
             default -> throw new LarvError("Unknown expression type: " + expr.getClass().getSimpleName());
         };
@@ -118,6 +119,9 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
         }
         return value;
     }
+
+    /** {@code (expr)} — transparently evaluates the wrapped expression. */
+    public Object visitGroup(@NotNull GroupExpression e) { return eval(e.expression()); }
 
     /** {@code expr!} — returns the operand if non-null, otherwise raises a runtime error. */
     public Object visitNonNull(@NotNull NonNullExpression e) {
@@ -144,7 +148,7 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
     @Override
     public Object visitBinary(@NotNull BinaryExpression e) {
         if ("is".equals(e.operator())) {
-            String typeName = e.right() instanceof StringExpression se ? se.value() : String.valueOf(eval(e.right()));
+            String typeName = e.right() instanceof StringExpression(String value) ? value : String.valueOf(eval(e.right()));
             return isInstance(eval(e.left()), typeName);
         }
         Object left  = eval(e.left());
@@ -339,6 +343,10 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
             @SuppressWarnings("unchecked")
             List<Object> array = (List<Object>) list;
             return ArrayMethods.dispatch(array, methodName, args);
+        }
+
+        if (target != null && !(target instanceof LarvObject)) {
+            return context.getJavaRegistry().invokeOnObject(target, methodName, args);
         }
 
         LarvObject obj = requireObject(target, "method call '" + methodName + "'");

@@ -1,5 +1,6 @@
 package com.habbashx.larv.compiler;
 
+import com.habbashx.larv.compiler.runtime.LarvCompilerRuntime;
 import com.habbashx.larv.compiler.util.LocalVarTable;
 import com.habbashx.larv.compiler.exception.CompileException;
 import com.habbashx.larv.parser.ast.statement.*;

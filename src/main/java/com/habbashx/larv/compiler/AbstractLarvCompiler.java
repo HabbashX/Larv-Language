@@ -102,6 +102,7 @@ public abstract class AbstractLarvCompiler {
 
     /** Library names referenced by {@code import} statements. */
     protected final Set<String> importedLibs = new LinkedHashSet<>();
+    protected final Set<String> javaBindAliases = new HashSet<>();
 
     /** Module alias → generated JVM internal name. */
     protected final Map<String, String> moduleNames = new LinkedHashMap<>();

@@ -1,6 +1,7 @@
 package com.habbashx.larv.parser;
 
 
+import com.habbashx.larv.lexer.Token;
 import com.habbashx.larv.lexer.TokenType;
 import com.habbashx.larv.parser.ast.expression.*;
 import com.habbashx.larv.parser.exception.ParseException;
@@ -241,7 +242,7 @@ public final class ExpressionParser {
 
     @Contract("_ -> new")
     private @NotNull Expression parseGet(Expression left) {
-        String field = stream.consumeValue(TokenType.IDENTIFIER, "Expected field name after '.'");
+        String field = consumeMemberName("Expected field name after '.'");
 
         if (stream.match(TokenType.EQUAL)) {
             Expression value = parse(Precedence.ASSIGNMENT - 1);
@@ -251,10 +252,25 @@ public final class ExpressionParser {
         return new GetExpression(left, field);
     }
 
+    /**
+     * Consumes the member name following a {@code .}.  Accepts plain
+     * identifiers as well as keyword tokens whose text is identifier-shaped
+     * (e.g. {@code get}/{@code set}), so Java methods with keyword names are
+     * reachable through the FFI: {@code Paths.get(path)}, {@code obj.set(x)}.
+     */
+    private @NotNull String consumeMemberName(String errorMessage) {
+        Token t = stream.peek();
+        String value = t.value();
+        if (value != null && value.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+            return stream.advance().value();
+        }
+        throw new ParseException(errorMessage + " — got: " + t.tokenType(), t);
+    }
+
     @Contract(" -> new")
     private @NotNull Expression parseGroup() {
         Expression inner = parse(Precedence.NONE);
-        stream.consume(TokenType.LPAREN, "Expected ')' to close grouped expression");
+        stream.consume(TokenType.RPAREN, "Expected ')' to close grouped expression");
         return new GroupExpression(inner);
     }
 

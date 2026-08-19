@@ -177,9 +177,10 @@ public class LarvCompilerMain {
                     && is.isFileImport()) {
 
                 String importPath = is.path();
+                String relativePath = importPath.replace('.', '/');
                 Path candidate = baseDir != null
-                        ? baseDir.resolve(importPath + ".larv")
-                        : Path.of(importPath + ".larv");
+                        ? baseDir.resolve(relativePath + ".larv")
+                        : Path.of(relativePath + ".larv");
                 if (!Files.exists(candidate)) {
                     candidate = baseDir != null
                             ? baseDir.resolve(importPath)
@@ -188,7 +189,7 @@ public class LarvCompilerMain {
                 if (!Files.exists(candidate)) {
                     throw new CompileException(
                             "File import not found: '" + importPath + "' " +
-                                    "(tried '" + importPath + ".larv' and '" + importPath + "')", is.line());
+                                    "(tried '" + relativePath + ".larv' and '" + importPath + "')", is.line());
                 }
 
                 String canonical = candidate.toAbsolutePath().normalize().toString();

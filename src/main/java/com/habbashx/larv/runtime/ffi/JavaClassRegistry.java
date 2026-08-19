@@ -7,14 +7,19 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
+import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Manages Java class bindings and method invocations for the Larv FFI.
@@ -43,6 +48,7 @@ public class JavaClassRegistry {
     private final Map<String, Object>       instanceBindings = new HashMap<>();
     private final Map<String, MethodHandle> cache            = new HashMap<>();
     private final MethodHandles.Lookup      lookup           = MethodHandles.lookup();
+    private static final MethodHandles.Lookup PUBLIC_LOOKUP   = MethodHandles.publicLookup();
 
     /** Static binding — only static methods can be called on this alias.
      *  If the class has a no-arg constructor, an instance is created automatically. */
@@ -107,6 +113,32 @@ public class JavaClassRegistry {
         return classBindings.containsKey(alias) || instanceBindings.containsKey(alias);
     }
 
+    /**
+     * Invokes a Java instance method on an arbitrary object that came back from
+     * an earlier FFI call (e.g. a {@code java.nio.file.Path} or a
+     * {@code java.util.stream.Stream}).  This mirrors the compiled runtime's
+     * raw-object dispatch so that chained calls like
+     * {@code Files.list(path).toList()} behave identically in both modes.
+     */
+    public Object invokeOnObject(@NotNull Object target, @NotNull String methodName, @NotNull List<Object> args) {
+        Class<?>   clazz    = target.getClass();
+        Object[]   rawArgs  = args.toArray();
+        String     alias    = clazz.getSimpleName();
+        try {
+            Method method = findBestMatch(clazz, methodName, rawArgs, true);
+            MethodHandle handle = toHandle(method);
+
+            Object[] converted = convertArgsFor(method, rawArgs);
+
+            Object result = invokeMethodHandle(handle, method, target, converted);
+            return normalizeResult(result);
+        } catch (LarvError e) {
+            throw e;
+        } catch (Throwable t) {
+            throw buildInvocationError(alias, methodName, t);
+        }
+    }
+
     public Object invoke(String alias, String methodName, List<Object> args) {
         Class<?> clazz = classBindings.get(alias);
         if (clazz == null) throw new LarvError(
@@ -121,16 +153,17 @@ public class JavaClassRegistry {
             boolean isStatic = Modifier.isStatic(method.getModifiers());
 
             String cacheKey = alias + "#" + methodName + "#" + args.size() + "#" + isStatic;
-            MethodHandle handle = cache.computeIfAbsent(cacheKey, k -> {
-                try { return toHandle(method); }
-                catch (Exception ex) { throw new RuntimeException(ex); }
-            });
+            MethodHandle handle = cache.get(cacheKey);
+            if (handle == null) {
+                handle = toHandle(method);
+                if (handle != null) cache.putIfAbsent(cacheKey, handle);
+            }
 
-            Object[] converted = convertArgs(method.getParameterTypes(), rawArgs);
+            Object[] converted = convertArgsFor(method, rawArgs);
 
             Object result;
             if (isStatic) {
-                result = handle.invokeWithArguments(converted);
+                result = invokeMethodHandle(handle, method, null, converted);
             } else {
                 if (instance == null) throw new LarvError(
                         "'" + alias + "." + methodName + "' is an instance method but '" + alias +
@@ -138,10 +171,7 @@ public class JavaClassRegistry {
                                 " from \"...\" involve { <args> }' to construct an instance.",
                         -1, LarvError.Kind.FFI);
 
-                Object[] fullArgs = new Object[converted.length + 1];
-                fullArgs[0] = instance;
-                System.arraycopy(converted, 0, fullArgs, 1, converted.length);
-                result = handle.invokeWithArguments(fullArgs);
+                result = invokeMethodHandle(handle, method, instance, converted);
             }
 
             return normalizeResult(result);
@@ -337,14 +367,22 @@ public class JavaClassRegistry {
 
         for (Method m : clazz.getMethods()) {
             if (!m.getName().equals(name)) continue;
-            if (m.getParameterTypes().length != args.length) continue;
+
+            Class<?>[] params = m.getParameterTypes();
+            boolean exact   = params.length == args.length;
+            boolean varargs = m.isVarArgs() && args.length >= params.length - 1;
+            if (!exact && !varargs) continue;
 
             boolean isStatic = Modifier.isStatic(m.getModifiers());
-            int methodScore = scoreParams(m.getParameterTypes(), args);
+            int methodScore = m.isVarArgs() ? scoreParamsVarargs(m, args) : scoreParams(params, args);
             if (hasInstance && !isStatic) methodScore += 5;
             if (!hasInstance && isStatic)  methodScore += 5;
 
-            if (methodScore > bestScore) { bestScore = methodScore; best = m; }
+            // Prefer an exact-arity (non-varargs) overload over a varargs one on a tie
+            if (methodScore > bestScore
+                    || (methodScore == bestScore && best != null && best.isVarArgs() && !m.isVarArgs())) {
+                bestScore = methodScore; best = m;
+            }
         }
 
         if (best == null) {
@@ -468,13 +506,119 @@ public class JavaClassRegistry {
         return dp[m][n];
     }
 
-    private MethodHandle toHandle(@NotNull Method method) throws Exception {
+        /**
+     * Builds a {@link MethodHandle} for {@code method}, or returns {@code null}
+     * when the JVM module system blocks handle access (e.g. methods on
+     * package-private JDK classes like {@code sun.nio.fs.WindowsPath}).  Callers
+     * fall back to plain reflection in that case.
+     */
+    private @Nullable MethodHandle toHandle(@NotNull Method method) {
         boolean isStatic = Modifier.isStatic(method.getModifiers());
         MethodType type  = MethodType.methodType(method.getReturnType(), method.getParameterTypes());
 
-        return isStatic
-                ? lookup.findStatic(method.getDeclaringClass(), method.getName(), type)
-                : lookup.findVirtual(method.getDeclaringClass(), method.getName(), type);
+        MethodHandle handle;
+        try {
+            handle = isStatic
+                    ? lookup.findStatic(method.getDeclaringClass(), method.getName(), type)
+                    : lookup.findVirtual(method.getDeclaringClass(), method.getName(), type);
+        } catch (IllegalAccessException e) {
+            try {
+                handle = PUBLIC_LOOKUP.unreflect(method);
+            } catch (IllegalAccessException e2) {
+                return null;
+            }
+        } catch (NoSuchMethodException e) {
+            throw new RuntimeException(e);
+        }
+
+        // Varargs methods produce "varargs collector" handles whose
+        // invokeWithArguments would spread a trailing array argument;
+        // fix them so the pre-built array is passed as-is.
+        return method.isVarArgs() ? handle.asFixedArity() : handle;
+    }
+
+    /**
+     * Invokes {@code method} on {@code instance} (or statically when
+     * {@code instance} is null).  Uses the fast {@link MethodHandle} path when
+     * available, otherwise falls back to plain reflection — required for
+     * package-private JDK classes that the module system hides from handles.
+     */
+    private Object invokeMethodHandle(@Nullable MethodHandle handle, @NotNull Method method,
+                                      @Nullable Object instance, Object @NotNull [] args) throws Throwable {
+        if (handle != null) {
+            return instance != null
+                    ? handle.bindTo(instance).invokeWithArguments(args)
+                    : handle.invokeWithArguments(args);
+        }
+
+        // Handle inaccessible classes (e.g. sun.nio.fs.WindowsPath): try to find
+        // the same method on a public interface/superclass and use that instead.
+        Method accessible = findAccessibleMethod(method, instance != null ? instance.getClass() : method.getDeclaringClass());
+        if (accessible != method) {
+            MethodHandle ah = toHandle(accessible);
+            if (ah != null) {
+                return instance != null
+                        ? ah.bindTo(instance).invokeWithArguments(args)
+                        : ah.invokeWithArguments(args);
+            }
+        }
+
+        // Last resort: try plain reflection on the (possibly still inaccessible) method
+        accessible.setAccessible(true);
+        return accessible.invoke(instance, args);
+    }
+
+    /**
+     * Finds a method with the same name/parameter types that is accessible
+     * (declared on a public class or interface).  Searches the target class's
+     * public interfaces, its superclass chain's interfaces, and public superclasses.
+     */
+    private @Nullable Method findAccessibleMethod(@NotNull Method original, @NotNull Class<?> targetClass) {
+        // Original already accessible?
+        if (Modifier.isPublic(original.getDeclaringClass().getModifiers())) {
+            return original;
+        }
+
+        // Search public interfaces of targetClass AND its superclasses (and their super-interfaces)
+        Set<Class<?>> visited = new HashSet<>();
+        Deque<Class<?>> queue = new ArrayDeque<>();
+        // Start with targetClass's direct interfaces
+        for (Class<?> iface : targetClass.getInterfaces()) {
+            if (Modifier.isPublic(iface.getModifiers())) queue.add(iface);
+        }
+        // Also add interfaces of superclasses
+        Class<?> superC = targetClass.getSuperclass();
+        while (superC != null) {
+            for (Class<?> iface : superC.getInterfaces()) {
+                if (Modifier.isPublic(iface.getModifiers())) queue.add(iface);
+            }
+            superC = superC.getSuperclass();
+        }
+
+        while (!queue.isEmpty()) {
+            Class<?> iface = queue.pop();
+            if (!visited.add(iface)) continue;
+            try {
+                Method m = iface.getMethod(original.getName(), original.getParameterTypes());
+                if (Modifier.isPublic(m.getModifiers())) return m;
+            } catch (NoSuchMethodException ignored) {}
+            for (Class<?> superIface : iface.getInterfaces()) {
+                if (Modifier.isPublic(superIface.getModifiers())) queue.add(superIface);
+            }
+        }
+
+        // Search public superclasses
+        superC = targetClass.getSuperclass();
+        while (superC != null) {
+            if (Modifier.isPublic(superC.getModifiers())) {
+                try {
+                    return superC.getMethod(original.getName(), original.getParameterTypes());
+                } catch (NoSuchMethodException ignored) {}
+            }
+            superC = superC.getSuperclass();
+        }
+
+        return original;
     }
 
     // ── result normalisation ──────────────────────────────────────────────────
@@ -491,23 +635,40 @@ public class JavaClassRegistry {
         if (result instanceof Boolean)     return result;
         if (result instanceof String)      return result;
         if (result instanceof List)        return result;
+        if (result.getClass().isArray())   return java.util.Arrays.asList((Object[]) result);
         return result;
     }
 
     private int scoreParams(Class<?> @NotNull [] params, Object[] args) {
         int score = 0;
-        for (int i = 0; i < params.length; i++) {
-            Class<?> p = params[i]; Object a = args[i];
-            if (a == null) continue;
-            if (p.isAssignableFrom(a.getClass()))                                   { score += 10; continue; }
-            if (a instanceof Double   && isNumeric(p))                               { score += 7;  continue; }
-            if (a instanceof Integer  && isNumeric(p))                               { score += 7;  continue; }
-            if (a instanceof Double   && (p == char.class || p == Character.class))  { score += 6;  continue; }
-            if (a instanceof Boolean  && (p == boolean.class || p == Boolean.class)) { score += 10; continue; }
-            if (a instanceof String   && (p == String.class || p == char.class))     { score += 8;  continue; }
-            score -= 50;
-        }
+        for (int i = 0; i < params.length; i++) score += scoreOne(params[i], args[i]);
         return score;
+    }
+
+    /**
+     * Scores a varargs method against the given arguments: the fixed parameters
+     * are scored directly, every remaining argument is scored against the
+     * varargs component type (as Java would expand them).
+     */
+    private int scoreParamsVarargs(@NotNull Method m, Object[] args) {
+        Class<?>[] params = m.getParameterTypes();
+        int fixed   = params.length - 1;
+        int score   = 0;
+        for (int i = 0; i < fixed; i++) score += scoreOne(params[i], args[i]);
+        Class<?> varType = params[fixed].getComponentType();
+        for (int i = fixed; i < args.length; i++) score += scoreOne(varType, args[i]);
+        return score;
+    }
+
+    private int scoreOne(Class<?> p, Object a) {
+        if (a == null) return 0;
+        if (p.isAssignableFrom(a.getClass()))                                    { return 10; }
+        if (a instanceof Double   && isNumeric(p))                               { return 7;  }
+        if (a instanceof Integer  && isNumeric(p))                               { return 7;  }
+        if (a instanceof Double   && (p == char.class || p == Character.class))  { return 6;  }
+        if (a instanceof Boolean  && (p == boolean.class || p == Boolean.class)) { return 10; }
+        if (a instanceof String   && (p == String.class || p == char.class))     { return 8;  }
+        return -50;
     }
 
     private boolean isNumeric(Class<?> c) {
@@ -519,6 +680,28 @@ public class JavaClassRegistry {
     private Object @NotNull [] convertArgs(Class<?>[] types, Object @NotNull [] args) {
         Object[] out = new Object[args.length];
         for (int i = 0; i < args.length; i++) out[i] = convert(args[i], types[i]);
+        return out;
+    }
+
+    /**
+     * Converts arguments for a method, expanding varargs parameters into a
+     * real array (Java's single/multi-element varargs expansion).
+     */
+    private Object @NotNull [] convertArgsFor(@NotNull Method method, Object @NotNull [] args) {
+        Class<?>[] types = method.getParameterTypes();
+        if (!method.isVarArgs()) return convertArgs(types, args);
+
+        int fixed    = types.length - 1;
+        Object[] out = new Object[types.length];
+        for (int i = 0; i < fixed; i++) out[i] = convert(args[i], types[i]);
+
+        Class<?> varType = types[fixed].getComponentType();
+        int varCount = args.length - fixed;
+        Object varArray = Array.newInstance(varType, varCount);
+        for (int i = 0; i < varCount; i++) {
+            Array.set(varArray, i, convert(args[fixed + i], varType));
+        }
+        out[fixed] = varArray;
         return out;
     }
 

@@ -25,4 +25,12 @@ public final class LarvMethods {
     public static final int INDEX_OF = 29;
     public static final int SUBSTRING = 30;
     public static final int CHAR_AT = 31;
+
+    /** Opcode id → Java reflection method name (for java-bind dispatch fallbacks). */
+    public static final String[] METHOD_NAME_BY_OPCODE = new String[] {
+            null, "add", "get", "size", "remove", "contains", "set", "clear", "isEmpty", "join",
+            "push", "pop", "reverse", null, null, null, null, null, null, null,
+            "length", "toUpperCase", "toLowerCase", "trim", "startsWith", "endsWith", "contains",
+            "replace", "split", "indexOf", "substring", "charAt"
+    };
 }

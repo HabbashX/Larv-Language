@@ -168,7 +168,11 @@ public abstract class CallCompiler extends TypeInferenceCompiler {
             }
         }
 
-        Integer methodId = METHOD_IDS.get(ge.field());
+        // Java-bind aliases (e.g. Paths, Files) are resolved by name at runtime —
+        // the opcode tables only cover Larv list/string methods.
+        boolean aliasReceiver = ge.object() instanceof VarExpression(String objName)
+                && javaBindAliases.contains(objName);
+        Integer methodId = aliasReceiver ? null : METHOD_IDS.get(ge.field());
         debugLog("    → LarvRuntime.invokeMethod  field=" + ge.field() + "  methodId=" + (methodId != null ? methodId : "null (string key)"));
         compileExpression(ge.object());
         if (methodId != null) {

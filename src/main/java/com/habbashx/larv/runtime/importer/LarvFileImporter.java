@@ -72,12 +72,18 @@ public class LarvFileImporter {
         List<Token>     tokens  = new Lexer(source).tokenize();
         List<Statement> program = new Parser(tokens).parse();
 
-        // Register only class and function declarations — skip executable statements
+        // Register class/interface/function declarations and java bindings —
+        // skip other executable statements
         for (Statement stmt : program) {
             if (stmt instanceof ClassStatement cls) {
                 context.defineClass(cls.name(), cls);
+            } else if (stmt instanceof InterfaceStatement iface) {
+                context.defineInterface(iface.name(), iface);
             } else if (stmt instanceof FunctionStatement fn) {
                 context.defineFunction(fn.name(), fn);
+            } else if (stmt instanceof JavaBindStatement jb) {
+                if (jb.hasInvolve()) context.getJavaRegistry().bindInstance(jb.alias(), jb.className(), jb.constructorArgs());
+                else                context.getJavaRegistry().bind(jb.alias(), jb.className());
             } else if (stmt instanceof ImportStatement nested) {
             if (nested.isFileImport()) {
                 Path nestedRoot = filePath.getParent() != null ? filePath.getParent() : root;

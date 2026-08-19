@@ -15,7 +15,10 @@ import java.lang.invoke.MethodType;
 import java.lang.invoke.MutableCallSite;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.InaccessibleObjectException;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -63,6 +66,7 @@ public class LarvCompilerRuntime {
     private static final ConcurrentHashMap<String, String> SYMBOL_CACHE = new ConcurrentHashMap<>(128);
     private static final ConcurrentHashMap<Class<?>, Method[]> CLASS_METHODS_CACHE = new ConcurrentHashMap<>(32);
     private static final ConcurrentHashMap<Class<?>, Constructor<?>[]> CONSTRUCTOR_CACHE = new ConcurrentHashMap<>(32);
+    private static final ConcurrentHashMap<String, Class<?>> JAVA_BIND_ALIASES = new ConcurrentHashMap<>(16);
 
     private static final int SB_POOL_SIZE = 32;
     private static final int SB_CAPACITY  = 128;
@@ -108,9 +112,6 @@ public class LarvCompilerRuntime {
 
     private static final ConcurrentHashMap<String, MethodHandle> HOT_METHOD_HANDLES =
             new ConcurrentHashMap<>(64);
-
-    private static final ConcurrentHashMap<String, Method> METHOD_CACHE = new ConcurrentHashMap<>(64);
-    private static final Method MISSING = findMissingMarker();
 
     private static final Object[] LIST_DISPATCH   = new Object[64];
     private static final Object[] STRING_DISPATCH = new Object[64];
@@ -202,7 +203,13 @@ public class LarvCompilerRuntime {
     private static Method[] cachedMethods(Class<?> cls) {
         return CLASS_METHODS_CACHE.computeIfAbsent(cls, c -> {
             Method[] ms = c.getMethods();
-            for (Method m : ms) m.setAccessible(true);
+            for (Method m : ms) {
+                try {
+                    m.setAccessible(true);
+                } catch (InaccessibleObjectException ignored) {
+                    // Internal JDK classes (e.g. sun.nio.fs.WindowsPath) cannot be made accessible
+                }
+            }
             return ms;
         });
     }
@@ -214,12 +221,72 @@ public class LarvCompilerRuntime {
     private static MethodHandle handleForMethod(Method m) {
         return METHOD_HANDLE_CACHE.computeIfAbsent(m, method -> {
             try {
-                method.setAccessible(true);
-                return PUBLIC_LOOKUP.unreflect(method);
-            } catch (IllegalAccessException e) {
+                try { method.setAccessible(true); } catch (InaccessibleObjectException ignored) {}
+                MethodHandle handle = PUBLIC_LOOKUP.unreflect(method);
+                return method.isVarArgs() ? handle.asFixedArity() : handle;
+            } catch (IllegalAccessException | InaccessibleObjectException e) {
+                // Internal JDK classes (e.g. sun.nio.fs.WindowsPath) are not accessible
+                // via publicLookup.unreflect; find an accessible equivalent on a public
+                // interface or superclass.
+                Method accessible = findAccessibleMethod(method, method.getDeclaringClass());
+                if (accessible != method) {
+                    try {
+                        try { accessible.setAccessible(true); } catch (InaccessibleObjectException ignored) {}
+                        MethodHandle handle = PUBLIC_LOOKUP.unreflect(accessible);
+                        return accessible.isVarArgs() ? handle.asFixedArity() : handle;
+                    } catch (IllegalAccessException | InaccessibleObjectException e2) {
+                        // fall through to reflection fallback
+                    }
+                }
                 return null;
             }
         });
+    }
+
+    /**
+     * Finds a method with the same name/parameter types that is accessible
+     * (declared on a public class or interface).  Searches the target class's
+     * public interfaces, its superclass chain's interfaces, and public superclasses.
+     */
+    private static @Nullable Method findAccessibleMethod(@NotNull Method original, @NotNull Class<?> targetClass) {
+        if (Modifier.isPublic(original.getDeclaringClass().getModifiers())) return original;
+
+        Set<Class<?>> visited = new HashSet<>();
+        Deque<Class<?>> queue = new ArrayDeque<>();
+        for (Class<?> iface : targetClass.getInterfaces()) {
+            if (Modifier.isPublic(iface.getModifiers())) queue.add(iface);
+        }
+        Class<?> superC = targetClass.getSuperclass();
+        while (superC != null) {
+            for (Class<?> iface : superC.getInterfaces()) {
+                if (Modifier.isPublic(iface.getModifiers())) queue.add(iface);
+            }
+            superC = superC.getSuperclass();
+        }
+
+        while (!queue.isEmpty()) {
+            Class<?> iface = queue.pop();
+            if (!visited.add(iface)) continue;
+            try {
+                Method m = iface.getMethod(original.getName(), original.getParameterTypes());
+                if (Modifier.isPublic(m.getModifiers())) return m;
+            } catch (NoSuchMethodException ignored) {}
+            for (Class<?> superIface : iface.getInterfaces()) {
+                if (Modifier.isPublic(superIface.getModifiers())) queue.add(superIface);
+            }
+        }
+
+        superC = targetClass.getSuperclass();
+        while (superC != null) {
+            if (Modifier.isPublic(superC.getModifiers())) {
+                try {
+                    return superC.getMethod(original.getName(), original.getParameterTypes());
+                } catch (NoSuchMethodException ignored) {}
+            }
+            superC = superC.getSuperclass();
+        }
+
+        return original;
     }
 
     /**
@@ -229,10 +296,37 @@ public class LarvCompilerRuntime {
     private static Object invokeHandle(MethodHandle mh, Method m, Object instance, Object[] args)
             throws Throwable {
         if (mh != null) {
-            return instance != null
-                    ? mh.bindTo(instance).invokeWithArguments(args)
-                    : mh.invokeWithArguments(args);
+            try {
+                return instance != null
+                        ? mh.bindTo(instance).invokeWithArguments(args)
+                        : mh.invokeWithArguments(args);
+            } catch (InaccessibleObjectException e) {
+                // Fall through to reflection with accessible method search
+            } catch (InvocationTargetException e) {
+                Throwable cause = e.getCause();
+                if (cause instanceof InaccessibleObjectException) {
+                    // Fall through to reflection with accessible method search
+                }
+                throw e;
+            } catch (Throwable t) {
+                // Catch any other exception from method handle invocation that might
+                // be an InaccessibleObjectException wrapped differently
+                if (t.getCause() instanceof InaccessibleObjectException) {
+                    // Fall through to reflection with accessible method search
+                }
+                throw t;
+            }
         }
+        // Reflection fallback with accessible method search for internal JDK classes
+        Method accessible = findAccessibleMethod(m, instance != null ? instance.getClass() : m.getDeclaringClass());
+        if (accessible != m) {
+            try {
+                accessible.setAccessible(true);
+                return accessible.invoke(instance, args);
+            } catch (InaccessibleObjectException ignored) {}
+        }
+        // Last resort: try original method
+        m.setAccessible(true);
         return m.invoke(instance, args);
     }
 
@@ -428,6 +522,12 @@ public class LarvCompilerRuntime {
     public static Object invokeMethod(Object target, String methodName, Object[] args) {
         if (target == null) throw new LarvRuntimeException("Cannot call method on nil");
 
+        // Java-bind aliases are compiled as String constants (ldc "Files"); resolve
+        // them back to the bound Java class and dispatch statically.
+        if (target instanceof String alias && JAVA_BIND_ALIASES.containsKey(alias)) {
+            return invokeJavaMethod(JAVA_BIND_ALIASES.get(alias), null, methodName, args);
+        }
+
         String hotKey = (target instanceof LarvObject ? "LarvObject" : target.getClass().getName())
                 + '#' + methodName + '#' + args.length;
         MethodHandle hotMH = HOT_METHOD_HANDLES.get(hotKey);
@@ -467,6 +567,14 @@ public class LarvCompilerRuntime {
     public static Object invokeMethod(Object target, int methodId, Object[] args) {
         if (target == null) throw new LarvRuntimeException("Cannot call method on nil");
 
+        // Java-bind aliases must use name-based dispatch; if an opcode slips
+        // through (e.g. "get"), fall back to the method name.
+        if (target instanceof String alias && JAVA_BIND_ALIASES.containsKey(alias)) {
+            String name = LarvMethods.METHOD_NAME_BY_OPCODE[methodId];
+            if (name == null) throw new LarvRuntimeException("Unknown opcode " + methodId + " on java bind " + alias);
+            return invokeJavaMethod(JAVA_BIND_ALIASES.get(alias), null, name, args);
+        }
+
         int tag = typeTagOf(target);
 
         if (tag == TYPE_TAG_LIST) {
@@ -492,11 +600,6 @@ public class LarvCompilerRuntime {
 
     private static @NotNull String join(@NotNull List<?> list, Object @NotNull [] args) {
         return joinList((List<Object>) list, args);
-    }
-
-    private static @NotNull Method findMissingMarker() {
-        try { return LarvCompilerRuntime.class.getDeclaredMethod("isTruthy", Object.class); }
-        catch (NoSuchMethodException e) { throw new ExceptionInInitializerError(e); }
     }
 
     /**
@@ -646,9 +749,10 @@ public class LarvCompilerRuntime {
         return result;
     }
 
-    public static @NotNull Object javaBindClass(String className) {
+    public static @NotNull Object javaBindClass(String alias, String className) {
         try {
             Class<?> cls = loadClass(className);
+            JAVA_BIND_ALIASES.put(alias, cls);
             com.habbashx.larv.compiler.runtime.LarvObject obj =
                     new com.habbashx.larv.compiler.runtime.LarvObject("__java__:" + className);
             obj.set(symbol("__javaClass__"), cls);
@@ -942,45 +1046,52 @@ public class LarvCompilerRuntime {
             }
         }
 
-        Method m = findCachedMethod(cls, method, args.length);
-        if (m == null || m == MISSING) throw new LarvRuntimeException("No method '" + method + "' on " + cls.getSimpleName());
+        Method @NotNull [] candidates = findCachedMethods(cls, method, args.length);
+        if (candidates == null) throw new LarvRuntimeException("No method '" + method + "' on " + cls.getSimpleName());
 
-        try {
-            Object[] converted = convertArgs(args, m.getParameterTypes());
-            MethodHandle mh = handleForMethod(m);
-            profileAndPromote(key, m);
-            return invokeHandle(mh, m, instance, converted);
-        } catch (java.lang.reflect.InvocationTargetException e) {
-            Throwable cause = e.getCause();
-            throw new LarvRuntimeException(cause != null ? cause.getMessage() : e.getMessage(), cause != null ? cause : e);
-        } catch (Throwable e) {
-            throw new LarvRuntimeException(e.getMessage(), e);
-        }
-    }
-
-    /** Resolves the parameter types for a cached method — used only when MethodHandle already cached. */
-    private static Class<?> @NotNull [] resolveParamTypes(Class<?> cls, String name, int arity) {
-        Method m = findCachedMethod(cls, name, arity);
-        return m != null ? m.getParameterTypes() : new Class<?>[0];
-    }
-
-    private static @Nullable Method findCachedMethod(@NotNull Class<?> cls, String name, int arity) {
-
-        String key = intern(cls.getName() + '#' + name + '#' + arity);
-        Method m = METHOD_CACHE.get(key);
-        if (m != null) return m == MISSING ? null : m;
-
-        Method[] methods = cachedMethods(cls);
-        Method found = null;
-        for (Method candidate : methods) {
-            if (candidate.getParameterCount() == arity && candidate.getName().equals(name)) {
-                found = candidate;
-                break;
+        // Try each matching method until one successfully converts and invokes
+        for (Method m : candidates) {
+            try {
+                Object[] converted = convertArgsFor(m, args);
+                MethodHandle mh = handleForMethod(m);
+                profileAndPromote(key, m);
+                return invokeHandle(mh, m, instance, converted);
+            } catch (LarvRuntimeException e) {
+                throw e;
+            } catch (Throwable e) {
+                // conversion or invocation failed, try next overload
             }
         }
-        METHOD_CACHE.putIfAbsent(key, found == null ? MISSING : found);
-        return found;
+        throw new LarvRuntimeException("No matching overload for '" + method + "' on " + cls.getSimpleName() + " with given arguments");
+}
+
+/** Resolves the parameter types for a cached method — used only when MethodHandle already cached. */
+    private static Class<?> @NotNull [] resolveParamTypes(Class<?> cls, String name, int arity) {
+        Method @NotNull [] candidates = findCachedMethods(cls, name, arity);
+        return (candidates != null && candidates.length > 0) ? candidates[0].getParameterTypes() : new Class<?>[0];
     }
+
+    private static @NotNull Method @NotNull [] findCachedMethods(@NotNull Class<?> cls, String name, int arity) {
+        String key = intern(cls.getName() + '#' + name + '#' + arity);
+        Method @NotNull [] cached = METHOD_CACHE_LIST.get(key);
+        if (cached != null) return cached.length == 0 ? null : cached;
+
+        Method[] methods = cachedMethods(cls);
+        List<Method> matching = new ArrayList<>();
+        for (Method candidate : methods) {
+            if (!candidate.getName().equals(name)) continue;
+            int paramCount = candidate.getParameterCount();
+            boolean exact = paramCount == arity;
+            boolean varargs = candidate.isVarArgs() && arity >= paramCount - 1;
+            if (exact || varargs) matching.add(candidate);
+        }
+        Method @NotNull [] result = matching.toArray(new Method[0]);
+        METHOD_CACHE_LIST.putIfAbsent(key, result.length == 0 ? NO_METHODS : result);
+        return result.length == 0 ? null : result;
+    }
+
+    private static final Method @NotNull [] NO_METHODS = new Method[0];
+    private static final ConcurrentHashMap<String, Method @NotNull []> METHOD_CACHE_LIST = new ConcurrentHashMap<>(256);
 
 
     private static @NotNull Class<?> loadClass(String name) throws ClassNotFoundException {
@@ -1005,6 +1116,28 @@ public class LarvCompilerRuntime {
     private static Object @NotNull [] convertArgs(Object @NotNull [] args, Class<?>[] types) {
         Object[] out = new Object[args.length];
         for (int i = 0; i < args.length; i++) out[i] = convertArg(args[i], types[i]);
+        return out;
+    }
+
+    /**
+     * Converts arguments for a method, expanding varargs parameters into a
+     * real array (Java's single/multi-element varargs expansion).
+     */
+    private static Object @NotNull [] convertArgsFor(@NotNull Method method, Object @NotNull [] args) {
+        Class<?>[] types = method.getParameterTypes();
+        if (!method.isVarArgs()) return convertArgs(args, types);
+
+        int fixed    = types.length - 1;
+        Object[] out = new Object[types.length];
+        for (int i = 0; i < fixed; i++) out[i] = convertArg(args[i], types[i]);
+
+        Class<?> varType = types[fixed].getComponentType();
+        int varCount = args.length - fixed;
+        Object varArray = java.lang.reflect.Array.newInstance(varType, varCount);
+        for (int i = 0; i < varCount; i++) {
+            java.lang.reflect.Array.set(varArray, i, convertArg(args[fixed + i], varType));
+        }
+        out[fixed] = varArray;
         return out;
     }
 

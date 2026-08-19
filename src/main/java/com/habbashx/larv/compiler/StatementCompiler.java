@@ -618,6 +618,17 @@ public abstract class StatementCompiler extends ExpressionCompiler {
     protected void compileModuleInit(ModuleStatement s) {}
 
     protected void compileJavaBind(@NotNull JavaBindStatement s) {
+        javaBindAliases.add(s.alias());
+        if (!s.hasInvolve() && (s.constructorArgs() == null || s.constructorArgs().isEmpty())) {
+            methodVisitor.visitLdcInsn(s.alias());
+            methodVisitor.visitLdcInsn(s.className());
+            methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "javaBindClass",
+                    "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;", false);
+            int slot = locals.define(s.alias());
+            methodVisitor.visitVarInsn(ASTORE, slot);
+            return;
+        }
+
         methodVisitor.visitLdcInsn(s.className());
         List<String> args = s.constructorArgs();
         int size = args == null ? 0 : args.size();
