@@ -12,6 +12,9 @@ target/
 *.iws
 *.iml
 *.ipr
+parser.larv
+User.larv
+testing.larv
 
 ### Eclipse ###
 .apt_generated
