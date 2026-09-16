@@ -227,9 +227,9 @@ public class LarvCompilerMain {
               --dump             Print ASM bytecode disassembly to stdout
               --run              Compile and immediately execute the program
               --debug            Enable debug mode: log every statement compiled to
-                                 stderr (type + line), emit JVM line-number entries so
-                                 stack traces point at Larv source lines, and announce
-                                 function entry/exit
+                                 stderr (type + line) and announce function entry/exit
+                                 (JVM line-number entries are always emitted, so stack
+                                 traces point at Larv source lines with or without it)
             """);
     }
 

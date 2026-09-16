@@ -603,13 +603,41 @@ print(dir)   // NORTH
 
 ### Atomic Variables
 
-`atomic<type>` declares a thread-safe variable backed by a Java `AtomicReference`. Reads and writes are guaranteed to be atomic across threads:
+`atomic<type>` declares a thread-safe variable backed by a Java atomic holder (`AtomicInteger`, `AtomicLong`, `AtomicBoolean`, or `AtomicReference` for custom objects). Reads and writes are guaranteed to be atomic across threads:
 
 ```larv
 atomic<int> counter = 0
 atomic<bool> running = true
 atomic<string> status
 ```
+
+Prefix the variable name with `^` to mark it explicitly as an atomic reference. Any `CustomObject` (or other reference type) is stored in an `AtomicReference`:
+
+```larv
+atomic<CustomObject> ^customObject = new CustomObject()
+```
+
+A trailing `^` on the initializer is accepted as well (`atomic<int> c = 0^`). Both markers are syntactic — `atomic<...>` already implies atomic storage.
+
+Reads auto-unwrap to the plain value, and writes update the holder in place (the holder object is never replaced), so normal code just works:
+
+```larv
+atomic<int> ^counter = 0
+counter = 10
+counter += 5
+counter++
+print(counter)   // 16
+```
+
+Explicit holder operations still reach the raw Java object — `get`, `set`, `compareAndSet`, `getAndIncrement`, `addAndGet`, and friends:
+
+```larv
+print(counter.get())                // 16
+counter.set(77)
+print(counter.compareAndSet(77, 78)) // true
+```
+
+Method calls that the holder itself does not define fall through to the wrapped value, so `customObject.getValue()` invokes the inner object's method.
 
 ### Volatile Variables
 
@@ -724,6 +752,28 @@ try {
 ```
 
 Any value can be thrown — strings, numbers, objects.
+
+### Stack traces
+
+Uncaught errors print a source snippet plus a Larv-level call stack (most recent call last), in both interpreter and compiled modes:
+
+```
+error[E001]: Division by zero
+ --> main.larv:2
+  |
+1 | func divide(a, b) {
+2 |     return a / b
+  |
+     stack backtrace (most recent call last):
+       at divide (main.larv:5)
+```
+
+How locations are resolved:
+
+- **Interpreter** — every error is anchored to the executing statement (error code, hint and column are preserved), and each function/method boundary appends its call-site line as the error unwinds.
+- **Compiled** — JVM line-number entries are always emitted into the bytecode, so crashes map back to Larv source lines with no flags required. When a compiled runtime error carries no line of its own, the reporter reconstructs the location from JVM frames belonging to generated Larv classes (toolchain/JDK frames are filtered out).
+
+Error codes are stable and searchable: `E001` runtime, `E002` parse, `E003` compile, `E004` FFI, `E005` lexer, `E006` division/modulo by zero, `E007` index out of bounds, `E008` undefined variable, `E009` undefined function, `E010` arity, `E011` type mismatch, `E012` nil dereference.
 
 ---
 
@@ -1344,7 +1394,7 @@ Pass `--debug` to enable the compiler's debug mode. It adds three layers of diag
 [DEBUG] end compileFunction    name=main
 ```
 
-**JVM line numbers** — `visitLineNumber` entries are emitted into the bytecode so that JVM stack traces point at the original Larv source line rather than `(Unknown Source)`.
+**JVM line numbers** — `visitLineNumber` entries are always emitted into the bytecode (independent of `--debug`), so JVM stack traces point at the original Larv source line rather than `(Unknown Source)`.
 
 **Exception capture** — when any exception is thrown during compilation, it is caught and logged at the point of failure (statement type, line, exception class, message, full Java stack trace) before being re-thrown. Fatal exceptions that escape the entire pipeline are logged again at the top level.
 

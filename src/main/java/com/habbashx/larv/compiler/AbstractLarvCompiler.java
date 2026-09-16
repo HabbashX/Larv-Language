@@ -126,10 +126,10 @@ public abstract class AbstractLarvCompiler {
      * <ul>
      *   <li>Each statement is logged to {@code stderr} before compilation
      *       (type, line number, and a short description).</li>
-     *   <li>{@link MethodVisitor#visitLineNumber} is called for every
-     *       statement so that JVM stack traces reference source lines.</li>
      *   <li>Every function entry and exit is announced on {@code stderr}.</li>
      * </ul>
+     * (JVM line-number entries are now always emitted, independent of this
+     * flag, so compiled stack traces reference Larv source lines.)
      * Enable via the {@code --debug} CLI flag in {@link LarvCompilerMain}.
      */
     protected boolean debugMode = false;
@@ -175,14 +175,15 @@ public abstract class AbstractLarvCompiler {
 
     /**
      * Emits a {@link MethodVisitor#visitLineNumber} instruction for the given
-     * source line when {@link #debugMode} is on.  Line-number entries are
-     * harmless metadata that make JVM stack traces point at the correct Larv
-     * source line, which is invaluable when tracking down runtime crashes.
+     * source line.  Line-number entries are small, harmless metadata that make
+     * JVM stack traces point at the correct Larv source line — they are
+     * always emitted (not only in {@link #debugMode}) so that runtime crashes
+     * in compiled programs carry accurate Larv locations.
      *
      * @param line the 1-based source line
      */
     protected void emitLineNumber(int line) {
-        if (debugMode && methodVisitor != null && line > 0) {
+        if (methodVisitor != null && line > 0) {
             Label l = new Label();
             methodVisitor.visitLabel(l);
             methodVisitor.visitLineNumber(line, l);

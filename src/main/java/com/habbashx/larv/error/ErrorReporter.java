@@ -166,8 +166,51 @@ public final class ErrorReporter {
     private static void printLarvError(LarvError le, String sourceText, String sourceFile) {
         if (sourceText != null) le.withSource(sourceText);
         if (sourceFile != null) le.withFile(sourceFile);
+        if (!le.hasLocation()) attachJvmFrames(le);
         System.err.print(le.format());
         printErrorFooter(le.errorCode());
+    }
+
+    /**
+     * Last-resort location recovery: when a {@link LarvError} carries no
+     * source line and no Larv call-stack frames (typical for faults raised
+     * deep inside compiled-mode runtime helpers), scan its JVM stack trace
+     * for application frames — generated Larv classes and user Java code —
+     * and record them as Larv trace frames.  Frames from the Larv toolchain
+     * itself ({@code com.habbashx.larv.*}), the JDK, and common libraries are
+     * skipped so the result reads as a Larv stack trace, not a Java one.
+     */
+    private static void attachJvmFrames(LarvError le) {
+        int added = 0;
+        for (StackTraceElement el : le.getStackTrace()) {
+            if (added >= 24) break;
+            if (!isAppFrame(el)) continue;
+            String cls = el.getClassName();
+            String simple = cls.substring(cls.lastIndexOf('.') + 1);
+            le.addTraceFrame(simple + "." + el.getMethodName(), el.getLineNumber());
+            added++;
+        }
+    }
+
+    /**
+     * Returns {@code true} for stack frames that belong to user code:
+     * compiled Larv classes or user Java code.  Toolchain, JDK and
+     * third-party frames are excluded.  Native methods (line {@code -2})
+     * and unknown locations ({@code <= 0}) are excluded as well.
+     */
+    private static boolean isAppFrame(StackTraceElement el) {
+        if (el.getLineNumber() <= 0) return false;
+        String cls = el.getClassName();
+        return !(cls.startsWith("java.")
+                || cls.startsWith("jdk.")
+                || cls.startsWith("sun.")
+                || cls.startsWith("com.sun.")
+                || cls.startsWith("com.habbashx.larv.")
+                || cls.startsWith("org.objectweb.")
+                || cls.startsWith("org.jetbrains.")
+                || cls.startsWith("com.fasterxml.")
+                || cls.startsWith("com.google.")
+                || cls.startsWith("kotlin."));
     }
 
     private static void printInternalError(String msg, String hint, String sourceFile) {
@@ -205,8 +248,41 @@ public final class ErrorReporter {
                 .append("this is likely a bug in the Larv runtime — please report it at https://github.com/habbashx/larv/issues")
                 .append("\n");
 
+        sb.append(formatAppFrames(t));
+
         System.err.print(sb);
         printErrorFooter("E001");
+    }
+
+    /**
+     * Renders the application frames of an unexpected exception's JVM stack
+     * (most recent call first), so even unclassified crashes show where in
+     * Larv-compiled or user Java code they originated instead of only a bare
+     * exception name.  Returns an empty string when no application frames
+     * exist (pure toolchain failure).
+     */
+    private static @NotNull String formatAppFrames(Throwable t) {
+        StringBuilder sb = new StringBuilder();
+        boolean headerDone = false;
+        int shown = 0;
+        for (StackTraceElement el : t.getStackTrace()) {
+            if (shown >= 24) break;
+            if (!isAppFrame(el)) continue;
+            if (!headerDone) {
+                sb.append(DIM).append("     application frames (most recent call first):").append(RESET).append("\n");
+                headerDone = true;
+            }
+            String cls = el.getClassName();
+            String simple = cls.substring(cls.lastIndexOf('.') + 1);
+            sb.append(DIM).append("       at ").append(RESET)
+                    .append(BOLD).append(simple).append(".").append(el.getMethodName()).append(RESET)
+                    .append(DIM).append(" (")
+                    .append(el.getFileName() != null ? el.getFileName() : "<unknown>")
+                    .append(":").append(el.getLineNumber()).append(")").append(RESET)
+                    .append("\n");
+            shown++;
+        }
+        return sb.toString();
     }
 
     /**

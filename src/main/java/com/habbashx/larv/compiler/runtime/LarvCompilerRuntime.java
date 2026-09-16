@@ -21,7 +21,10 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 
 /**
@@ -1031,6 +1034,70 @@ public class LarvCompilerRuntime {
 
     @Contract(value = "null -> false", pure = true)
     public static boolean toBoolean(Object value) { return isTruthy(value); }
+
+    /**
+     * Dispatches a method call on an {@code atomic<...>} variable's raw
+     * holder.  Holder-native operations ({@code get}, {@code set},
+     * {@code compareAndSet}, {@code getAndIncrement}, ...) run on the holder
+     * itself; anything else (e.g. {@code customObject.getValue()}) falls back
+     * to the unwrapped inner value.  Mirrors the interpreter's dual dispatch
+     * in {@code ExpressionEvaluator.callMethod}.
+     */
+    public static Object invokeAtomicMethod(Object atomic, String methodName, Object[] args) {
+        try {
+            return invokeMethod(atomic, methodName, args);
+        } catch (LarvRuntimeException missing) {
+            String msg = missing.getMessage();
+            if (msg == null || (!msg.contains("No method '") && !msg.contains("No matching overload")))
+                throw missing;
+            return invokeMethod(unwrapAtomic(atomic), methodName, args);
+        }
+    }
+
+    /**
+     * Transparently unwraps an {@code atomic<...>} holder to its plain Larv
+     * value ({@link AtomicInteger}/{@link AtomicLong} → {@link Double},
+     * {@link AtomicBoolean} → {@link Boolean}, {@link AtomicReference} → the
+     * referenced value).  Non-atomic values pass through unchanged, so this
+     * is safe to call unconditionally.
+     */
+    @Contract(pure = true)
+    public static Object unwrapAtomic(Object value) {
+        if (value instanceof AtomicInteger ai)      return (double) ai.get();
+        if (value instanceof AtomicLong al)         return (double) al.get();
+        if (value instanceof AtomicBoolean ab)      return ab.get();
+        if (value instanceof AtomicReference<?> r)  return r.get();
+        return value;
+    }
+
+    /**
+     * Stores {@code value} into an existing atomic holder <em>in place</em>
+     * (never replaces the holder object) and returns {@code value} so the
+     * call can be used both as a statement ({@code POP} the result) and as
+     * an expression (leave it on the stack).
+     */
+    public static Object setAtomic(Object atomic, Object value) {
+        if (atomic instanceof AtomicInteger ai) {
+            ai.set((int) toDouble(value));
+            return value;
+        }
+        if (atomic instanceof AtomicLong al) {
+            al.set((long) toDouble(value));
+            return value;
+        }
+        if (atomic instanceof AtomicBoolean ab) {
+            ab.set(isTruthy(value));
+            return value;
+        }
+        if (atomic instanceof AtomicReference) {
+            @SuppressWarnings("unchecked")
+            AtomicReference<Object> ref = (AtomicReference<Object>) atomic;
+            ref.set(value);
+            return value;
+        }
+        throw new LarvRuntimeException("setAtomic() requires an atomic holder, got: "
+                + (atomic == null ? "nil" : atomic.getClass().getSimpleName()));
+    }
 
     private static Object invokeJavaMethod(@NotNull Class<?> cls, Object instance, String method, Object @NotNull [] args) {
         String key = cls.getName() + '#' + method + '#' + args.length;

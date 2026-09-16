@@ -4,6 +4,10 @@ import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 /**
  * The single exception type used for ALL errors raised by the Larv toolchain.
  *
@@ -66,6 +70,24 @@ public class LarvError extends RuntimeException {
      * Set via {@link #withCode(String)}.
      */
     private String customCode = null;
+
+    /**
+     * A single Larv-level call-stack frame captured while a {@link LarvError}
+     * propagates out of a function or method body.
+     *
+     * @param function the Larv function/method name (never blank)
+     * @param line     the 1-based source line of the <em>call site</em that
+     *                 entered the frame, or -1 when unknown
+     */
+    public record LarvFrame(String function, int line) { }
+
+    /**
+     * Larv-level call stack, innermost frame first.  Frames are appended by
+     * the runtime as the error unwinds through function/method boundaries
+     * (interpreter), or reconstructed from JVM stack frames carrying Larv
+     * line numbers (compiled mode, see {@code ErrorReporter}).
+     */
+    private final List<LarvFrame> larvTrace = new ArrayList<>();
 
     public LarvError(String message, int line, int column, Kind kind) {
         super(message);
@@ -131,6 +153,67 @@ public class LarvError extends RuntimeException {
     public int  getLine()   { return line; }
     public int  getColumn() { return column; }
     public Kind getKind()   { return kind; }
+
+    /**
+     * Appends a call-stack frame to this error's Larv trace.  Called by the
+     * runtime once per function/method boundary while the error propagates,
+     * so frames accumulate innermost-first.  Frames with a blank name are
+     * ignored; unknown lines ({@code < 0}) are kept but rendered without a
+     * location.
+     */
+    public void addTraceFrame(String function, int line) {
+        if (function == null || function.isBlank()) return;
+        larvTrace.add(new LarvFrame(function, line));
+    }
+
+    /** Returns an unmodifiable view of the captured Larv call stack (innermost first). */
+    public @NotNull List<LarvFrame> larvTrace() { return Collections.unmodifiableList(larvTrace); }
+
+    /**
+     * Returns {@code true} when this error can be anchored to a source
+     * location — either its own line or any trace frame's line.
+     */
+    @Contract(pure = true)
+    public boolean hasLocation() {
+        if (line >= 0) return true;
+        for (LarvFrame f : larvTrace) if (f.line() >= 0) return true;
+        return false;
+    }
+
+    /**
+     * The line used for the pointer and snippet: the error's own line when
+     * present, otherwise the innermost trace frame line, otherwise -1.
+     */
+    @Contract(pure = true)
+    public int effectiveLine() {
+        if (line >= 0) return line;
+        for (LarvFrame f : larvTrace) if (f.line() >= 0) return f.line();
+        return -1;
+    }
+
+    /**
+     * Returns a copy of this error with {@code newLine} as its source line,
+     * preserving kind, column, error code, hint, note, span, source text and
+     * file.  Used by the statement dispatcher to anchor line-less runtime
+     * errors to the executing statement without losing diagnostic quality
+     * (code, hints and notes survive, unlike a plain re-throw).
+     *
+     * <p>The copy is always a base {@link LarvError}, even when called on a
+     * subclass — runtime interpreter/compiled errors are base instances in
+     * practice, and callers should prefer this over dropping metadata.</p>
+     */
+    public @NotNull LarvError withLine(int newLine) {
+        LarvError copy = new LarvError(getMessage(), newLine, column, kind);
+        copy.customCode  = this.customCode;
+        copy.hint        = this.hint;
+        copy.note        = this.note;
+        copy.sourceText  = this.sourceText;
+        copy.sourceFile  = this.sourceFile;
+        copy.spanLength  = this.spanLength;
+        copy.larvTrace.addAll(this.larvTrace);
+        if (getCause() != null) copy.initCause(getCause());
+        return copy;
+    }
 
 
     @Contract(pure = true)
@@ -278,35 +361,46 @@ public class LarvError extends RuntimeException {
                 .append(RESET)
                 .append("\n");
 
-        if (line >= 0) {
+        // The pointer/snippet use the effective line: the error's own line when
+        // present, otherwise the innermost call-stack frame that has one.
+        int shownLine = effectiveLine();
+        if (shownLine >= 0) {
             sb.append(BLUE).append(" --> ").append(RESET);
             if (this.sourceFile != null && !this.sourceFile.isBlank()) {
                 sb.append(this.sourceFile);
             } else {
                 sb.append("<source>");
             }
-            sb.append(":").append(line);
-            if (column >= 0) sb.append(":").append(column);
+            sb.append(":").append(shownLine);
+            if (line < 0) {
+                // Location came from the call stack, not the error itself.
+                sb.append(DIM).append("  (from call stack)").append(RESET);
+            } else if (column >= 0) {
+                sb.append(":").append(column);
+            }
             sb.append("\n");
         }
 
-        String lineContent = sourceLine(line);
+        String lineContent = sourceLine(shownLine);
         if (lineContent != null) {
-            String prevLine = sourceLine(line - 1);
+            String prevLine = sourceLine(shownLine - 1);
             if (prevLine != null) {
-                int gw = String.valueOf(line).length();
+                int gw = String.valueOf(shownLine).length();
                 sb.append(BLUE).append(" ".repeat(gw + 1)).append("|").append(RESET).append("\n");
                 sb.append(DIM)
-                        .append(BLUE).append(String.format(" %d", line - 1)).append(" | ").append(RESET)
+                        .append(BLUE).append(String.format(" %d", shownLine - 1)).append(" | ").append(RESET)
                         .append(DIM).append(prevLine).append(RESET).append("\n");
             }
 
             String caretMsg = buildInlineCaretMessage();
-            sb.append(buildSnippet(lineContent, column, caretMsg, line));
-        } else if (line >= 0) {
+            sb.append(buildSnippet(lineContent, line >= 0 ? column : -1, caretMsg, shownLine));
+        } else if (shownLine >= 0) {
             String gutter = BLUE + " " + "|" + RESET;
             sb.append(gutter).append("\n");
         }
+
+        sb.append(buildTraceSection());
+
         if (hint != null && !hint.isBlank()) {
             sb.append(GREEN).append(BOLD).append("     = help: ").append(RESET)
                     .append(hint).append("\n");
@@ -335,6 +429,34 @@ public class LarvError extends RuntimeException {
         return msg.substring(0, Math.min(msg.length(), 40)) + "…";
     }
 
+
+    /**
+     * Renders the captured Larv call stack, most recent call last
+     * (Python-style), e.g.:
+     * <pre>
+     *   stack backtrace (most recent call last):
+     *     at main (main.larv:10)
+     *     at divide (main.larv:4)
+     * </pre>
+     * Returns an empty string when no frames were captured.
+     */
+    private @NotNull String buildTraceSection() {
+        if (larvTrace.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        sb.append(DIM).append("     stack backtrace (most recent call last):").append(RESET).append("\n");
+        for (int i = larvTrace.size() - 1; i >= 0; i--) {
+            LarvFrame f = larvTrace.get(i);
+            sb.append(DIM).append("       at ").append(RESET)
+                    .append(BOLD).append(f.function()).append(RESET);
+            if (f.line() >= 0) {
+                sb.append(DIM).append(" (");
+                if (this.sourceFile != null && !this.sourceFile.isBlank()) sb.append(this.sourceFile).append(":");
+                sb.append(f.line()).append(")").append(RESET);
+            }
+            sb.append("\n");
+        }
+        return sb.toString();
+    }
 
     @Override
     public String toString() { return format(); }

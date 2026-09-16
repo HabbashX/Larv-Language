@@ -168,6 +168,22 @@ public abstract class CallCompiler extends TypeInferenceCompiler {
             }
         }
 
+        // Atomic locals are stored as raw holders: load the holder (without
+        // the usual unwrap) and dispatch via invokeAtomicMethod, which tries
+        // holder-native ops first (get/set/compareAndSet/...) and falls back
+        // to the unwrapped inner value (customObject.getValue()).
+        if (ge.object() instanceof VarExpression(String atomicName)
+                && locals.isAtomic(atomicName)) {
+            int slot = locals.get(atomicName);
+            debugLog("    → invokeAtomicMethod  receiver=" + atomicName + "  field=" + ge.field());
+            methodVisitor.visitVarInsn(ALOAD, slot);
+            methodVisitor.visitLdcInsn(ge.field());
+            pushObjectArray(args);
+            methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "invokeAtomicMethod",
+                    "(Ljava/lang/Object;Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/Object;", false);
+            return;
+        }
+
         // Java-bind aliases (e.g. Paths, Files) are resolved by name at runtime —
         // the opcode tables only cover Larv list/string methods.
         boolean aliasReceiver = ge.object() instanceof VarExpression(String objName)

@@ -44,6 +44,16 @@ public class ExecutionContext {
     private Environment environment;
 
     /**
+     * 1-based source line of the statement currently executing, or -1 when
+     * unknown.  Updated by the statement dispatcher on every statement; read
+     * by the function invoker to stamp call-stack frames with their call-site
+     * line.  Plain field (interpreter runs are single-threaded per run;
+     * async bodies capture their own errors on worker threads before the
+     * line can change meaningfully).
+     */
+    private int currentLine = -1;
+
+    /**
      * Filesystem path of the project root.
      * Used by {@link com.habbashx.larv.runtime.importer.LarvFileImporter} to
      * resolve dotted import paths.  Defaults to the JVM working directory.
@@ -77,6 +87,12 @@ public class ExecutionContext {
 
     /** Returns the currently active environment (scope). */
     public Environment getEnvironment() { return environment; }
+
+    /** Returns the source line of the currently executing statement (-1 if unknown). */
+    public int getCurrentLine() { return currentLine; }
+
+    /** Records the source line of the currently executing statement. */
+    public void setCurrentLine(int line) { this.currentLine = line; }
 
     /** Replaces the active environment. Use with caution — prefer {@link #pushScope}. */
     public void setEnvironment(Environment environment) { this.environment = environment; }

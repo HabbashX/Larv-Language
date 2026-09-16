@@ -137,7 +137,11 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
      * @return the value bound to the variable's name
      * @throws LarvError if the variable is not declared
      */
-    @Override public Object visitVar(@NotNull VarExpression e) { return context.getEnvironment().get(e.name()); }
+    @Override public Object visitVar(@NotNull VarExpression e) {
+        // Atomic holders are transparently unwrapped on read, so
+        // `atomic<int> ^c = 0` followed by `print(c)` prints 0, not the holder.
+        return AtomicHelper.unwrap(context.getEnvironment().get(e.name()));
+    }
 
     /**
      * Evaluates both operands eagerly and applies the binary operator.
@@ -270,7 +274,15 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
         }
 
         FunctionStatement init = methods.get("constructor");
-        if (init != null) invoker.invokeMethod(init, obj, evalAll(e.args()));
+        if (init != null) {
+            int callLine = context.getCurrentLine();
+            try {
+                invoker.invokeMethod(init, obj, evalAll(e.args()));
+            } catch (LarvError err) {
+                err.addTraceFrame(className + ".constructor", callLine);
+                throw err;
+            }
+        }
 
         return obj;
     }
@@ -279,12 +291,20 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
 
     @Override
     public Object visitGet(@NotNull GetExpression e) {
-        return requireObject(eval(e.object()), "field access '" + e.field() + "'").getOrThrow(e.field());
+        Object field = requireObject(eval(e.object()), "field access '" + e.field() + "'").getOrThrow(e.field());
+        return AtomicHelper.unwrap(field);
     }
 
     @Override
     public Object visitSet(@NotNull SetExpression e) {
-        requireObject(eval(e.object()), "field assignment '" + e.field() + "'").set(e.field(), eval(e.value()));
+        LarvObject obj = requireObject(eval(e.object()), "field assignment '" + e.field() + "'");
+        Object value = eval(e.value());
+        Object existing = obj.get(e.field());
+        if (AtomicHelper.isAtomic(existing)) {
+            AtomicHelper.setAtomic(existing, value);
+            return null;
+        }
+        obj.set(e.field(), value);
         return null;
     }
     /**
@@ -303,7 +323,16 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
         if (fn.params().size() != args.size())
             throw new LarvError("Function '" + name + "' expects " + fn.params().size() +
                     " argument(s) but got " + args.size());
-        return invoker.invokeFunction(fn, args);
+        // Capture the call-site line BEFORE invoking: callee statements will
+        // overwrite the current line as they run.  Frames accumulate
+        // innermost-first as the error unwinds through nested calls.
+        int callLine = context.getCurrentLine();
+        try {
+            return invoker.invokeFunction(fn, args);
+        } catch (LarvError e) {
+            e.addTraceFrame(name, callLine);
+            throw e;
+        }
     }
 
     /**
@@ -326,6 +355,26 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
         if (objExpr instanceof VarExpression(String name) && context.getJavaRegistry().hasAlias(name))
             return context.getJavaRegistry().invoke(name, methodName, args);
 
+        // Explicit atomic operations (s.get(), s.set(v), s.compareAndSet(...),
+        // s.getAndIncrement(), ...) must reach the raw holder object, which
+        // visitVar would otherwise unwrap.  Route them to the holder directly,
+        // falling back to the unwrapped value when the holder itself has no
+        // such method (e.g. customObject.getValue() on the inner LarvObject).
+        if (objExpr instanceof VarExpression(String varName)) {
+            Object raw;
+            try { raw = context.getEnvironment().get(varName); }
+            catch (LarvError undefined) { raw = null; }
+            if (AtomicHelper.isAtomic(raw)) {
+                try {
+                    return context.getJavaRegistry().invokeOnObject(raw, methodName, args);
+                } catch (LarvError notFound) {
+                    if (notFound.getMessage() == null || !notFound.getMessage().contains("not found"))
+                        throw notFound;
+                    // Fall through to normal dispatch on the unwrapped value.
+                }
+            }
+        }
+
         Object target = eval(objExpr);
 
         if (target instanceof LarvObject obj && obj.hasField("__module__")) {
@@ -336,7 +385,13 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
             if (fn == null) throw new LarvError("Module '" + moduleName + "' has no function '" + methodName + "'");
             if (fn.params().size() != args.size())
                 throw new LarvError("'" + moduleName + "." + methodName + "' expects " + fn.params().size() + " arg(s) but got " + args.size());
-            return invoker.invokeFunction(fn, args);
+            int callLine = context.getCurrentLine();
+            try {
+                return invoker.invokeFunction(fn, args);
+            } catch (LarvError e) {
+                e.addTraceFrame(qualifiedName, callLine);
+                throw e;
+            }
         }
 
         if (target instanceof List<?> list) {
@@ -352,7 +407,14 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
         LarvObject obj = requireObject(target, "method call '" + methodName + "'");
         FunctionStatement fn = getMethods(obj).get(methodName);
         if (fn == null) throw new LarvError("Undefined method '" + methodName + "' on object");
-        return invoker.invokeMethod(fn, obj, args);
+        int callLine = context.getCurrentLine();
+        try {
+            return invoker.invokeMethod(fn, obj, args);
+        } catch (LarvError e) {
+            Object cls = obj.get("__class__");
+            e.addTraceFrame((cls instanceof String s ? s + "." : "") + methodName, callLine);
+            throw e;
+        }
     }
 
     /**
@@ -593,6 +655,15 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
      */
     private Object visitAssignExpr(@NotNull AssignExpression e) {
         Object value = eval(e.value());
+        // Writing to an atomic variable updates the holder in place so the
+        // reference identity (and thread-safety) is preserved.
+        Object existing;
+        try { existing = context.getEnvironment().get(e.name()); }
+        catch (LarvError undefined) { existing = null; }
+        if (AtomicHelper.isAtomic(existing)) {
+            AtomicHelper.setAtomic(existing, value);
+            return value;
+        }
         context.getEnvironment().assign(e.name(), value);
         return value;
     }

@@ -73,7 +73,7 @@ public class LarvRunner {
             interp.execute(ast);
 
         } catch (Throwable t) {
-            if (t instanceof LarvError le && le.getLine() >= 0) {
+            if (t instanceof LarvError le && le.hasLocation()) {
                 le.withSource(source).withFile(fileName);
             }
             ErrorReporter.report(t, source, fileName);

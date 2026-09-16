@@ -19,6 +19,13 @@ public class LocalVarTable {
     /** Maps variable name → JVM slot index in the current scope chain. */
     private final Deque<Map<String, Integer>> scopes = new ArrayDeque<>();
 
+    /**
+     * Names declared via {@code atomic<...>} in each scope.  Runs parallel to
+     * {@link #scopes} so block exit and per-method tables drop atomicity
+     * exactly when the variable itself goes out of scope.
+     */
+    private final Deque<Set<String>> atomicScopes = new ArrayDeque<>();
+
     /** Maps slot index → JVM internal type name for slots that hold a known concrete type.
      *  Absent means the slot holds {@code java/lang/Object} (unknown / erased). */
     private final Map<Integer, String> typeBySlot = new HashMap<>();
@@ -33,6 +40,7 @@ public class LocalVarTable {
         this.nextSlot = startSlot;
         this.maxSlot  = startSlot;
         scopes.push(new LinkedHashMap<>());
+        atomicScopes.push(new HashSet<>());
     }
 
     /** Allocates a new slot for {@code name} and returns the slot index. */
@@ -87,11 +95,33 @@ public class LocalVarTable {
     /** Pushes a new lexical scope (for blocks, if-bodies, loops, etc.). */
     public void pushScope() {
         scopes.push(new LinkedHashMap<>());
+        atomicScopes.push(new HashSet<>());
     }
 
     /** Pops the innermost lexical scope. */
     public void popScope() {
         if (scopes.size() > 1) scopes.pop();
+        if (atomicScopes.size() > 1) atomicScopes.pop();
+    }
+
+    /**
+     * Marks {@code name} as an {@code atomic<...>} variable in the current
+     * scope.  Code generation uses this to emit holder-preserving
+     * read/write sequences (unwrap on load, {@code set} on store).
+     */
+    public void markAtomic(String name) {
+        atomicScopes.peek().add(name);
+    }
+
+    /**
+     * Returns {@code true} if {@code name} was declared {@code atomic<...>}
+     * in any enclosing scope.
+     */
+    public boolean isAtomic(String name) {
+        for (Set<String> scope : atomicScopes) {
+            if (scope.contains(name)) return true;
+        }
+        return false;
     }
 
     /** Maximum slot index seen — used for ClassWriter.visitMaxs(). */

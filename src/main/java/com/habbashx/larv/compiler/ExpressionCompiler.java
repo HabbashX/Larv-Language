@@ -124,6 +124,11 @@ public abstract class ExpressionCompiler extends CallCompiler {
         int slot = locals.get(e.name());
         if (slot >= 0) {
             methodVisitor.visitVarInsn(ALOAD, slot);
+            if (locals.isAtomic(e.name())) {
+                // Transparent read: unwrap the holder to its plain Larv value.
+                methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "unwrapAtomic",
+                        "(Ljava/lang/Object;)Ljava/lang/Object;", false);
+            }
             return;
         }
 
@@ -148,8 +153,17 @@ public abstract class ExpressionCompiler extends CallCompiler {
         if (constLocals.contains(e.name())) {
             throw new CompileException("Cannot reassign constant '" + e.name() + "'", -1);
         }
-        compileExpression(e.value());
         int slot = locals.get(e.name());
+        if (slot >= 0 && locals.isAtomic(e.name())) {
+            // x = v on an atomic: set in place; setAtomic returns v, which
+            // stays on the stack as the expression value.
+            methodVisitor.visitVarInsn(ALOAD, slot);
+            compileExpression(e.value());
+            methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "setAtomic",
+                    "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", false);
+            return;
+        }
+        compileExpression(e.value());
         if (slot < 0) slot = locals.define(e.name());
         methodVisitor.visitInsn(DUP);
         methodVisitor.visitVarInsn(ASTORE, slot);

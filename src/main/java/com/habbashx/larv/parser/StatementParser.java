@@ -658,20 +658,33 @@ public class StatementParser {
     }
 
     /**
-     * Parses: atomic<type> name [= initializer]
+     * Parses: atomic&lt;type&gt; [^]name [= initializer[^]]
      * The 'atomic' keyword has already been consumed by the registry.
+     *
+     * <p>The optional {@code ^} marker before the variable name declares the
+     * variable as an atomic reference, e.g.
+     * {@code atomic<CustomObject> ^obj = new CustomObject();}.  A trailing
+     * {@code ^} after the initializer is accepted as well for compatibility
+     * with the postfix style, e.g. {@code atomic<int> c = 0^}.  Both markers
+     * are purely syntactic — the {@code atomic<...>} declaration already
+     * implies atomic storage — so they are consumed and discarded here.</p>
      */
     @Contract(" -> new")
     private @NotNull Statement parseAtomic() {
         stream.consume(TokenType.LT, "Expected '<' after 'atomic'");
-        String type = stream.consumeValue(TokenType.IDENTIFIER, "Expected type (e.g., int, bool, string) inside atomic<...>");
+        String type = stream.consumeValue(TokenType.IDENTIFIER, "Expected type (e.g., int, bool, string, CustomObject) inside atomic<...>");
         stream.consume(TokenType.GT, "Expected '>' after atomic type");
+
+        // Optional '^' marker before the variable name: atomic<T> ^name = ...
+        stream.match(TokenType.CARET);
 
         String name = stream.consumeValue(TokenType.IDENTIFIER, "Expected variable name after atomic<" + type + ">");
 
         Expression initializer = null;
         if (stream.match(TokenType.EQUAL)) {
             initializer = exprParser.parse();
+            // Optional trailing '^' marker: atomic<T> name = <expr>^
+            stream.match(TokenType.CARET);
         }
 
         return new AtomicStatement(type, name, initializer, -1);

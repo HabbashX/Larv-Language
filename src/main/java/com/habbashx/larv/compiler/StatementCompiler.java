@@ -35,8 +35,9 @@ public abstract class StatementCompiler extends ExpressionCompiler {
         if (debugMode) {
             debugLog("compileStatement  line=" + st.line()
                     + "  type=" + st.getClass().getSimpleName());
-            emitLineNumber(st.line());
         }
+        // Always emitted so compiled stack traces map back to Larv lines.
+        emitLineNumber(st.line());
         try {
             switch (st) {
                 case VarStatement s             -> compileVar(s);
@@ -249,6 +250,18 @@ public abstract class StatementCompiler extends ExpressionCompiler {
             }
         }
 
+        int existingSlot = locals.get(s.name());
+        if (existingSlot >= 0 && locals.isAtomic(s.name())) {
+            // x = v on an atomic: update the holder in place via setAtomic
+            // (which returns v); POP it since a statement leaves nothing.
+            methodVisitor.visitVarInsn(ALOAD, existingSlot);
+            compileExpression(s.value());
+            methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "setAtomic",
+                    "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", false);
+            methodVisitor.visitInsn(POP);
+            return;
+        }
+
         String localType = getLocalType(s.name());
         String exprType  = evaluateExpressionType(s.value());
         if (localType != null && !isTypeCompatible(localType, exprType)) {
@@ -269,15 +282,21 @@ public abstract class StatementCompiler extends ExpressionCompiler {
         }
         int slot = locals.get(s.name());
         if (slot < 0) throw new CompileException("Undefined variable: " + s.name(), s.line());
+        boolean isAtomic = locals.isAtomic(s.name());
         switch (s.operator()) {
             case "+" -> {
-                methodVisitor.visitVarInsn(ALOAD, slot);
+                // NB: must use BinaryOperator.apply (numeric coercion + string
+                // concat), NOT LarvCompilerRuntime.add (which only adds when
+                // both sides are Double — int literals compile to Integer and
+                // would otherwise string-concat, e.g. 10 + 5 → "105").
+                methodVisitor.visitLdcInsn("+");
+                emitAtomicAwareLoad(slot, s.name(), isAtomic);
                 compileExpression(s.value());
-                methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "add",
-                        "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", false);
+                methodVisitor.visitMethodInsn(INVOKESTATIC, "com/habbashx/larv/runtime/BinaryOperator", "apply",
+                        "(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", false);
             }
             case "-" -> {
-                methodVisitor.visitVarInsn(ALOAD, slot);
+                emitAtomicAwareLoad(slot, s.name(), isAtomic);
                 methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "toDouble", "(Ljava/lang/Object;)D", false);
                 compileExpression(s.value());
                 methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "toDouble", "(Ljava/lang/Object;)D", false);
@@ -285,7 +304,7 @@ public abstract class StatementCompiler extends ExpressionCompiler {
                 methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Double", "valueOf", "(D)Ljava/lang/Double;", false);
             }
             case "*" -> {
-                methodVisitor.visitVarInsn(ALOAD, slot);
+                emitAtomicAwareLoad(slot, s.name(), isAtomic);
                 methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "toDouble", "(Ljava/lang/Object;)D", false);
                 compileExpression(s.value());
                 methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "toDouble", "(Ljava/lang/Object;)D", false);
@@ -293,7 +312,7 @@ public abstract class StatementCompiler extends ExpressionCompiler {
                 methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Double", "valueOf", "(D)Ljava/lang/Double;", false);
             }
             case "/" -> {
-                methodVisitor.visitVarInsn(ALOAD, slot);
+                emitAtomicAwareLoad(slot, s.name(), isAtomic);
                 methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "toDouble", "(Ljava/lang/Object;)D", false);
                 compileExpression(s.value());
                 methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "toDouble", "(Ljava/lang/Object;)D", false);
@@ -302,7 +321,35 @@ public abstract class StatementCompiler extends ExpressionCompiler {
             }
             default -> throw new CompileException("Unknown compound op: " + s.operator(), s.line());
         }
-        methodVisitor.visitVarInsn(ASTORE, slot);
+        if (isAtomic) emitAtomicStore(slot);
+        else          methodVisitor.visitVarInsn(ASTORE, slot);
+    }
+
+    /**
+     * Emits {@code ALOAD slot} plus an {@code unwrapAtomic} call when the
+     * variable is an {@code atomic<...>} holder, so compound operations work
+     * on the plain value.
+     */
+    private void emitAtomicAwareLoad(int slot, String name, boolean isAtomic) {
+        methodVisitor.visitVarInsn(ALOAD, slot);
+        if (isAtomic) {
+            methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "unwrapAtomic",
+                    "(Ljava/lang/Object;)Ljava/lang/Object;", false);
+        }
+    }
+
+    /**
+     * Stores the value on top of the stack back into an atomic holder in
+     * place: stack {@code [newVal]} → {@code ALOAD holder} → {@code SWAP} →
+     * {@code setAtomic} → {@code POP}.  Both entries are single-word
+     * references, so {@code SWAP} is valid.
+     */
+    private void emitAtomicStore(int slot) {
+        methodVisitor.visitVarInsn(ALOAD, slot);
+        methodVisitor.visitInsn(SWAP);
+        methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "setAtomic",
+                "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;", false);
+        methodVisitor.visitInsn(POP);
     }
 
     private void compilePrint(@NotNull PrintStatement s) {
@@ -450,23 +497,27 @@ public abstract class StatementCompiler extends ExpressionCompiler {
     private void compileIncrement(@NotNull IncrementStatement s) {
         int slot = locals.get(s.name());
         if (slot < 0) throw new CompileException("Undefined variable: " + s.name(), s.line());
-        methodVisitor.visitVarInsn(ALOAD, slot);
+        boolean isAtomic = locals.isAtomic(s.name());
+        emitAtomicAwareLoad(slot, s.name(), isAtomic);
         methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "toDouble", "(Ljava/lang/Object;)D", false);
         methodVisitor.visitLdcInsn(1.0);
         methodVisitor.visitInsn(DADD);
         methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Double", "valueOf", "(D)Ljava/lang/Double;", false);
-        methodVisitor.visitVarInsn(ASTORE, slot);
+        if (isAtomic) emitAtomicStore(slot);
+        else          methodVisitor.visitVarInsn(ASTORE, slot);
     }
 
     private void compileDecrement(@NotNull DecrementStatement s) {
         int slot = locals.get(s.name());
         if (slot < 0) throw new CompileException("Undefined variable: " + s.name(), s.line());
-        methodVisitor.visitVarInsn(ALOAD, slot);
+        boolean isAtomic = locals.isAtomic(s.name());
+        emitAtomicAwareLoad(slot, s.name(), isAtomic);
         methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "toDouble", "(Ljava/lang/Object;)D", false);
         methodVisitor.visitLdcInsn(1.0);
         methodVisitor.visitInsn(DSUB);
         methodVisitor.visitMethodInsn(INVOKESTATIC, "java/lang/Double", "valueOf", "(D)Ljava/lang/Double;", false);
-        methodVisitor.visitVarInsn(ASTORE, slot);
+        if (isAtomic) emitAtomicStore(slot);
+        else          methodVisitor.visitVarInsn(ASTORE, slot);
     }
 
     private void compileTryCatch(@NotNull TryCatchStatement s) {
@@ -751,6 +802,7 @@ public abstract class StatementCompiler extends ExpressionCompiler {
         }
 
         int idx = locals.define(as.name());
+        locals.markAtomic(as.name());
         methodVisitor.visitVarInsn(ASTORE, idx);
     }
 

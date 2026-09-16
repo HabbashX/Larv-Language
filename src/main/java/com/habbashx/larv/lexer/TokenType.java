@@ -100,5 +100,6 @@ public enum TokenType {
     QUESTION,
     DEFER,
     ARROW,
+    CARET,
     EOF
 }

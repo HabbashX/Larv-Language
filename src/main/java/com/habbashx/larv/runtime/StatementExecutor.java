@@ -86,11 +86,16 @@ public class StatementExecutor implements StatementVisitor {
         if (handler == null) {
             throw new LarvError("No handler registered for: " + st.getClass().getSimpleName(), st.line());
         }
+        // Stamp the executing line so call-stack frames captured deeper in
+        // this statement carry an accurate call-site location.
+        context.setCurrentLine(st.line());
         try {
             handler.handle(st);
         } catch (LarvError e) {
             if (e.getLine() < 0 && st.line() >= 0) {
-                throw new LarvError(e.getMessage(), st.line(), e.getColumn(), e.getKind());
+                // Anchor the error to this statement WITHOUT losing its
+                // code, hint, note or column (a plain re-throw would).
+                throw e.withLine(st.line());
             }
             throw e;
         }
@@ -107,14 +112,37 @@ public class StatementExecutor implements StatementVisitor {
     }
 
     @Override public void visitAssign(@NotNull AssignStatement st) {
-        context.getEnvironment().assign(st.name(), evaluator.eval(st.value()));
+        Object value = evaluator.eval(st.value());
+        Object existing = readRaw(st.name());
+        if (AtomicHelper.isAtomic(existing)) {
+            // Update the holder in place — never replace the Atomic object.
+            AtomicHelper.setAtomic(existing, value);
+            return;
+        }
+        context.getEnvironment().assign(st.name(), value);
     }
 
     @Override public void visitCompoundAssign(@NotNull CompoundAssignStatement st) {
-        Object current = context.getEnvironment().get(st.name());
+        Object raw     = context.getEnvironment().get(st.name());
+        Object current = AtomicHelper.unwrap(raw);
         Object rhs     = evaluator.eval(st.value());
         Object result  = BinaryOperator.apply(st.operator(), current, rhs);
+        if (AtomicHelper.isAtomic(raw)) {
+            AtomicHelper.setAtomic(raw, result);
+            return;
+        }
         context.getEnvironment().assign(st.name(), result);
+    }
+
+    /**
+     * Reads the raw (possibly still-wrapped) value of a variable without
+     * unwrapping atomic holders.  Returns {@code null} when undeclared so
+     * callers can fall through to the normal {@code assign} path, which
+     * raises the proper "undefined variable" error.
+     */
+    private Object readRaw(String name) {
+        try { return context.getEnvironment().get(name); }
+        catch (LarvError undefined) { return null; }
     }
 
     /**
@@ -240,6 +268,21 @@ public class StatementExecutor implements StatementVisitor {
 
     @Override public void visitIncrement(@NotNull IncrementStatement st) {
         Object current = context.getEnvironment().get(st.name());
+        if (current instanceof java.util.concurrent.atomic.AtomicInteger ai) {
+            ai.incrementAndGet();
+            return;
+        }
+        if (current instanceof java.util.concurrent.atomic.AtomicLong al) {
+            al.incrementAndGet();
+            return;
+        }
+        if (AtomicHelper.isAtomic(current)) {
+            Object unwrapped = AtomicHelper.unwrap(current);
+            if (!(unwrapped instanceof Double d))
+                throw new LarvError("'++' requires a number variable, got: " + unwrapped, st.line());
+            AtomicHelper.setAtomic(current, d + 1);
+            return;
+        }
         if (!(current instanceof Double d))
             throw new LarvError("'++' requires a number variable, got: " + current, st.line());
         context.getEnvironment().assign(st.name(), d + 1);
@@ -247,6 +290,21 @@ public class StatementExecutor implements StatementVisitor {
 
     @Override public void visitDecrement(@NotNull DecrementStatement st) {
         Object current = context.getEnvironment().get(st.name());
+        if (current instanceof java.util.concurrent.atomic.AtomicInteger ai) {
+            ai.decrementAndGet();
+            return;
+        }
+        if (current instanceof java.util.concurrent.atomic.AtomicLong al) {
+            al.decrementAndGet();
+            return;
+        }
+        if (AtomicHelper.isAtomic(current)) {
+            Object unwrapped = AtomicHelper.unwrap(current);
+            if (!(unwrapped instanceof Double d))
+                throw new LarvError("'--' requires a number variable, got: " + unwrapped, st.line());
+            AtomicHelper.setAtomic(current, d - 1);
+            return;
+        }
         if (!(current instanceof Double d))
             throw new LarvError("'--' requires a number variable, got: " + current, st.line());
         context.getEnvironment().assign(st.name(), d - 1);
@@ -390,6 +448,12 @@ public class StatementExecutor implements StatementVisitor {
     @Override
     public void visitAtomic(@NotNull AtomicStatement st) {
         Object init = st.initializer() == null ? null : evaluator.eval(st.initializer());
+        // An already-atomic initializer (e.g. reused holder) is stored as-is
+        // instead of being double-wrapped.
+        if (init != null && AtomicHelper.isAtomic(init)) {
+            context.getEnvironment().define(st.name(), init);
+            return;
+        }
         Object atomicInstance;
 
         switch (st.type()) {
