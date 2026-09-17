@@ -103,6 +103,8 @@ public final class ExpressionParser {
         map.put(TokenType.SLASH, this::parseBinary);
         map.put(TokenType.LPAREN,   this::parseCall);
         map.put(TokenType.DOT,      this::parseGet);
+        map.put(TokenType.QUESTION_DOT, this::parseSafeGet);
+        map.put(TokenType.QUESTION_QUESTION, this::parseCoalesce);
         map.put(TokenType.LBRACKET, this::parseIndex);
         map.put(TokenType.BANG,     this::parseNonNullAssert);
 
@@ -134,8 +136,11 @@ public final class ExpressionParser {
         map.put(TokenType.STAR,    Precedence.FACTOR);
         map.put(TokenType.SLASH,   Precedence.FACTOR);
 
+        map.put(TokenType.QUESTION_QUESTION, Precedence.COALESCE);
+
         map.put(TokenType.LPAREN,   Precedence.POSTFIX);
         map.put(TokenType.DOT,      Precedence.POSTFIX);
+        map.put(TokenType.QUESTION_DOT, Precedence.POSTFIX);
         map.put(TokenType.LBRACKET, Precedence.POSTFIX);
         map.put(TokenType.BANG,     Precedence.POSTFIX);
 
@@ -250,6 +255,36 @@ public final class ExpressionParser {
         }
 
         return new GetExpression(left, field);
+    }
+
+    /**
+     * Parses null-safe access: {@code obj?.field}.  Like {@link #parseGet} but
+     * produces a {@link SafeGetExpression}; assigning through {@code ?.}
+     * (e.g. {@code a?.b = v}) is rejected — guard with
+     * {@code if (a != nil) { a.b = v }} instead.
+     */
+    @Contract("_ -> new")
+    private @NotNull Expression parseSafeGet(Expression left) {
+        String field = consumeMemberName("Expected field name after '?.'");
+
+        if (stream.match(TokenType.EQUAL)) {
+            throw new ParseException(
+                    "Cannot assign to '?.' safe navigation — the result would silently vanish when the receiver is nil; "
+                            + "use '.' instead, or guard with: if (" + "x != nil) { x." + field + " = ... }",
+                    stream.peek());
+        }
+
+        return new SafeGetExpression(left, field);
+    }
+
+    /**
+     * Parses the nil-coalescing operator: {@code left ?? right}.
+     * Left-associative like {@code ||} (nil-semantics are identical either
+     * way); the right side is lazy and only evaluated when needed.
+     */
+    private @NotNull Expression parseCoalesce(Expression left) {
+        Expression right = parse(Precedence.COALESCE);
+        return new CoalesceExpression(left, right);
     }
 
     /**

@@ -92,6 +92,8 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
             case NewExpression     e -> visitNew(e);
             case ThisExpression    e -> visitThis(e);
             case GetExpression     e -> visitGet(e);
+            case SafeGetExpression e -> visitSafeGet(e);
+            case CoalesceExpression e -> visitCoalesce(e);
             case SetExpression     e -> visitSet(e);
             case JavaCallExpression e -> visitJavaCall(e);
             case ArrayExpression   e -> visitArray(e);
@@ -230,8 +232,9 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
     public Object visitCall(@NotNull CallExpression e) {
         List<Object> args = evalAll(e.arguments());
         return switch (e.caller()) {
-            case VarExpression(String name)              -> callFunction(name, args);
-            case GetExpression(Expression obj, String m) -> callMethod(obj, m, args);
+            case VarExpression(String name)                  -> callFunction(name, args);
+            case GetExpression(Expression obj, String m)     -> callMethod(obj, m, args);
+            case SafeGetExpression(Expression obj, String m) -> callSafeMethod(obj, m, args);
             default -> throw new LarvError("Invalid call target — expected a function or method");
         };
     }
@@ -293,6 +296,25 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
     public Object visitGet(@NotNull GetExpression e) {
         Object field = requireObject(eval(e.object()), "field access '" + e.field() + "'").getOrThrow(e.field());
         return AtomicHelper.unwrap(field);
+    }
+
+    /**
+     * Evaluates null-safe field access ({@code obj?.field}): {@code nil} when
+     * the receiver is {@code nil}, otherwise identical to {@link #visitGet}.
+     */
+    public Object visitSafeGet(@NotNull SafeGetExpression e) {
+        Object target = eval(e.object());
+        if (target == null) return null;
+        return requireObject(target, "field access '" + e.field() + "'").getOrThrow(e.field());
+    }
+
+    /**
+     * Evaluates nil-coalescing ({@code left ?? right}) with short-circuiting:
+     * the right side runs only when the left side is {@code nil}.
+     */
+    private Object visitCoalesce(@NotNull CoalesceExpression e) {
+        Object left = eval(e.left());
+        return left != null ? left : eval(e.right());
     }
 
     @Override
@@ -376,7 +398,26 @@ public final class ExpressionEvaluator implements ExpressionVisitor {
         }
 
         Object target = eval(objExpr);
+        return dispatchMethodCall(target, methodName, args);
+    }
 
+    /**
+     * Dispatches a null-safe method call ({@code obj?.method(args)}): {@code nil}
+     * when the receiver is {@code nil} (arguments are still evaluated first,
+     * matching call-site evaluation order), otherwise identical to
+     * {@link #callMethod}.
+     */
+    private Object callSafeMethod(Expression objExpr, String methodName, List<Object> args) {
+        Object target = eval(objExpr);
+        if (target == null) return null;
+        return dispatchMethodCall(target, methodName, args);
+    }
+
+    /**
+     * Shared post-evaluation method dispatch used by both regular and
+     * null-safe calls: modules → arrays → foreign Java objects → Larv objects.
+     */
+    private Object dispatchMethodCall(Object target, String methodName, List<Object> args) {
         if (target instanceof LarvObject obj && obj.hasField("__module__")) {
             String moduleName = (String) obj.get("__module__");
             String qualifiedName = moduleName + "." + methodName;

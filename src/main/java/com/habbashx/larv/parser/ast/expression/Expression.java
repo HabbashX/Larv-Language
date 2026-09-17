@@ -22,6 +22,8 @@ package com.habbashx.larv.parser.ast.expression;
  *   <li>{@link NewExpression}      — object construction {@code new Foo(args)}</li>
  *   <li>{@link NumberExpression}   — numeric literal {@code 42} or {@code 3.14}</li>
  *   <li>{@link SetExpression}      — field assignment {@code obj.field = val}</li>
+ *   <li>{@link SafeGetExpression}  — null-safe access {@code obj?.field}</li>
+ *   <li>{@link CoalesceExpression} — nil-coalescing {@code left ?? right}</li>
  *   <li>{@link StringExpression}   — string literal {@code "hello"}</li>
  *   <li>{@link ThisExpression}     — {@code this} reference</li>
  *   <li>{@link UnaryExpression}    — unary operation {@code -expr}</li>
@@ -32,5 +34,5 @@ package com.habbashx.larv.parser.ast.expression;
  * without relying on {@code instanceof} chains.</p>
  */
 public sealed interface Expression
-        permits ArrayExpression, AssignExpression, AwaitExpression, BinaryExpression, BooleanExpression, CallExpression, ClassRefExpression, GetExpression, GroupExpression, IndexExpression, JavaCallExpression, LiteralExpression, LogicalExpression, NewExpression, NonNullExpression, NumberExpression, SetExpression, StringExpression, TernaryExpression, ThisExpression, UnaryExpression, VarExpression {
+        permits ArrayExpression, AssignExpression, AwaitExpression, BinaryExpression, BooleanExpression, CallExpression, ClassRefExpression, CoalesceExpression, GetExpression, GroupExpression, IndexExpression, JavaCallExpression, LiteralExpression, LogicalExpression, NewExpression, NonNullExpression, NumberExpression, SafeGetExpression, SetExpression, StringExpression, TernaryExpression, ThisExpression, UnaryExpression, VarExpression {
 }

@@ -122,6 +122,29 @@ public class LarvCompilerMain {
 
         System.out.println("Parsed " + ast.size() + " top-level statement(s).");
 
+        // The generated main class would collide with a user-declared Larv
+        // class/interface of the same name (e.g. parser.larv defining
+        // `class Parser`): both emit `<Name>.class`, the second silently
+        // overwriting the first and typically erasing main(), which surfaces
+        // later as a baffling NoSuchMethodException.  Disambiguate by
+        // suffixing the main class instead of clobbering user code.
+        Set<String> declaredTypes = new HashSet<>();
+        for (Statement s : ast) {
+            if (s instanceof com.habbashx.larv.parser.ast.statement.ClassStatement cs)
+                declaredTypes.add(cs.name());
+            else if (s instanceof com.habbashx.larv.parser.ast.statement.InterfaceStatement is)
+                declaredTypes.add(is.name());
+        }
+        String requestedName = className;
+        while (declaredTypes.contains(className)) {
+            className += "Main";
+        }
+        if (!className.equals(requestedName)) {
+            System.out.println("Note: main class renamed to '" + className
+                    + "' to avoid collision with Larv type '" + requestedName + "'"
+                    + " (override with --class <Name>).");
+        }
+
         LarvCompiler compiler = new LarvCompiler(className);
         compiler.debugMode = debug;
         List<CompiledClass> classes = compiler.compile(ast);

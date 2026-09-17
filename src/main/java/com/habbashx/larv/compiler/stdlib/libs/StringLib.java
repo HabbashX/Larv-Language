@@ -61,7 +61,12 @@ public final class StringLib implements LarvStdlib {
     public static @NotNull @Unmodifiable Object string_strCharAt(Object s, Object i)           { return String.valueOf(str(s, "strCharAt").charAt((int) num(i, "strCharAt"))); }
     public static @NotNull @Unmodifiable Object string_strIsEmpty(Object s)                    { return str(s, "strIsEmpty").isBlank(); }
     @Contract(value = "null -> !null", pure = true)
-    public static @Unmodifiable Object string_strFromNumber(Object n)                 { return String.valueOf(n); }
+    public static @Unmodifiable Object string_strFromNumber(Object n) {
+        // Parity with the interpreter's strFromNumber: whole Doubles print
+        // without the ".0" (1.0 → "1", 2.5 stays "2.5").
+        if (n instanceof Double d && d == Math.floor(d) && !Double.isInfinite(d)) return String.valueOf(d.longValue());
+        return String.valueOf(n);
+    }
     public static @NotNull @Unmodifiable Object string_strFormat(Object fmt, Object arg)       { return String.format(str(fmt, "strFormat"), arg); }
 
     public static @NotNull @Unmodifiable Object string_strSlice(Object s, Object from, Object to) {

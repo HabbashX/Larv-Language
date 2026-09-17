@@ -45,7 +45,7 @@ public abstract class ClassCompiler extends StatementCompiler {
                 ? classStmt.superclassName()
                 : LARV_OBJ;
         try {
-            ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
+            ClassWriter cw = new LarvClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
             cw.visit(V21, ACC_PUBLIC | ACC_SUPER, internalClassName, null, superInternalName, null);
 
             for (Statement stmt : classStmt.body()) {

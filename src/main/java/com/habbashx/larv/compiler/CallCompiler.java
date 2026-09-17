@@ -81,6 +81,12 @@ public abstract class CallCompiler extends TypeInferenceCompiler {
             }
         }
 
+        if (caller instanceof SafeGetExpression sge) {
+            debugLog("    → route: safe method call  field=" + sge.field());
+            compileSafeMethodCall(sge, e.arguments());
+            return;
+        }
+
         if (caller instanceof GetExpression ge) {
             debugLog("    → route: method call  field=" + ge.field());
             compileMethodCall(ge, e.arguments());
@@ -202,6 +208,40 @@ public abstract class CallCompiler extends TypeInferenceCompiler {
             methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "invokeMethod",
                     "(Ljava/lang/Object;Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/Object;", false);
         }
+    }
+
+    /**
+     * Compiles a null-safe method call ({@code obj?.method(args)}): {@code nil}
+     * when the receiver is {@code nil} (arguments are evaluated only on the
+     * non-nil path, preserving short-circuit semantics), otherwise a dynamic
+     * dispatch identical to the {@code invokeMethod} fallback of
+     * {@link #compileMethodCall} — covering Larv objects, lists, strings and
+     * Java receivers uniformly (the static INVOKEVIRTUAL fast path is
+     * intentionally not used here so every receiver kind works).
+     */
+    protected void compileSafeMethodCall(@NotNull SafeGetExpression sge, @NotNull List<Expression> args) {
+        org.objectweb.asm.Label lNil = new org.objectweb.asm.Label();
+        org.objectweb.asm.Label lEnd = new org.objectweb.asm.Label();
+        compileExpression(sge.object());
+        methodVisitor.visitInsn(DUP);
+        methodVisitor.visitJumpInsn(IFNULL, lNil);
+        Integer methodId = METHOD_IDS.get(sge.field());
+        if (methodId != null) {
+            pushInt(methodId);
+            pushObjectArray(args);
+            methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "invokeMethod",
+                    "(Ljava/lang/Object;I[Ljava/lang/Object;)Ljava/lang/Object;", false);
+        } else {
+            methodVisitor.visitLdcInsn(sge.field());
+            pushObjectArray(args);
+            methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "invokeMethod",
+                    "(Ljava/lang/Object;Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/Object;", false);
+        }
+        methodVisitor.visitJumpInsn(GOTO, lEnd);
+        methodVisitor.visitLabel(lNil);
+        methodVisitor.visitInsn(POP);
+        methodVisitor.visitInsn(ACONST_NULL);
+        methodVisitor.visitLabel(lEnd);
     }
 
     /**

@@ -12,10 +12,9 @@ package com.habbashx.larv.parser;
  * ──────────────────────────────────────
  *   0     NONE        (floor — no operator)
  *   1     ASSIGNMENT  =
- *   2     EQUALITY    == !=
- *   3     COMPARISON  < > <= >=
- *   4     TERM        + -
- *   5     POSTFIX     () . []   (call, get, index)
+ *   2     COALESCE    ??
+ *   3     TERNARY     ? ,
+ *   4     POSTFIX     () . [] ?.  (call, get, index, safe-get)
  * </pre>
  */
 public final class Precedence {
@@ -24,14 +23,15 @@ public final class Precedence {
 
     public static final int NONE       = 0;
     public static final int ASSIGNMENT = 1;
-    public static final int TERNARY    = 2;  // ? ,
-    public static final int LOGICAL_OR = 3;  // ||
-    public static final int LOGICAL_AND= 4;  // &&
-    public static final int EQUALITY   = 5;  // == !=
-    public static final int COMPARISON = 6;  // < > <= >=
-    public static final int TERM       = 7;  // + -
-    public static final int FACTOR     = 8;  // * /
-    public static final int UNARY      = 9;  // - !
-    public static final int POSTFIX    = 10; // () . []
+    public static final int COALESCE   = 2;  // ?? (binds loosest after `=`, like C#)
+    public static final int TERNARY    = 3;  // ? ,
+    public static final int LOGICAL_OR = 4;  // ||
+    public static final int LOGICAL_AND= 5;  // &&
+    public static final int EQUALITY   = 6;  // == !=
+    public static final int COMPARISON = 7;  // < > <= >=
+    public static final int TERM       = 8;  // + -
+    public static final int FACTOR     = 9;  // * /
+    public static final int UNARY      = 10; // - !
+    public static final int POSTFIX    = 11; // () . [] ?.
 
 }

@@ -12,9 +12,7 @@ target/
 *.iws
 *.iml
 *.ipr
-parser.larv
-User.larv
-testing.larv
+
 
 ### Eclipse ###
 .apt_generated
@@ -40,3 +38,8 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+
+parser.larv
+User.larv
+testing.larv

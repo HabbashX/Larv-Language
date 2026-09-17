@@ -37,6 +37,7 @@ g.greet()
   - [String Concatenation](#string-concatenation)
   - [Nil](#nil)
   - [Non-Null Assertion](#non-null-assertion)
+  - [Null Safety](#null-safety)
 - [Type Annotations](#type-annotations)
 - [Control Flow](#control-flow)
   - [If / Else](#if--else)
@@ -176,6 +177,8 @@ var sql = `SELECT *
 | Assignment | `=`  `+=`  `-=`  `*=`  `/=`           |
 | Increment  | `++`  `--`                             |
 | Non-null   | `expr!` (postfix assertion)            |
+| Null-safe  | `obj?.field`, `obj?.method()` (nil short-circuits to nil) |
+| Coalescing | `a ?? b` (fallback for nil, right side is lazy) |
 | Type check | `expr is Type` (instance-of / interface) |
 
 ### String Concatenation
@@ -215,6 +218,33 @@ try {
     print("value was nil")
 }
 ```
+
+### Null Safety
+
+The `?.` operator accesses a field or calls a method only when the receiver is non-`nil` — otherwise the whole expression is `nil`, with no error:
+
+```larv
+var city = user?.address?.city   // nil if user or address is nil
+var label = user?.name()         // nil if user is nil
+```
+
+Assigning through `?.` (e.g. `user?.name = "Bo"`) is a compile-time error — guard it instead:
+
+```larv
+if (user != nil) {
+    user.name = "Bo"
+}
+```
+
+The `??` operator provides a fallback for `nil`, and its right side runs only when needed:
+
+```larv
+var name = user?.name ?? "anonymous"
+var port = config?.port ?? 8080
+var cached = cache ?? computeExpensive()  // computeExpensive() runs only on a cache miss
+```
+
+`??` chains (`a ?? b ?? c`) and binds looser than every operator except `=`, so `x = a ?? b` parses as expected. Together, `?.` and `??` cover the two nil-handling patterns; postfix `!` above covers the third (fail fast).
 
 ---
 

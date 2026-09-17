@@ -64,7 +64,7 @@ public class LarvCompiler extends ClassCompiler {
             else if (s instanceof ImportStatement is && is.library() != null) importedLibs.add(is.library());
         }
 
-        classWriter = new ClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
+        classWriter = new LarvClassWriter(ClassWriter.COMPUTE_FRAMES | ClassWriter.COMPUTE_MAXS);
         classWriter.visit(V21, ACC_PUBLIC | ACC_SUPER, mainInternalName, null, "java/lang/Object", null);
         classWriter.visitSource(mainClassName + ".larv", null);
         emitDefaultConstructor(classWriter, "java/lang/Object");

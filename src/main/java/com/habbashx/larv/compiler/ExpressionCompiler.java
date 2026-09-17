@@ -48,6 +48,8 @@ public abstract class ExpressionCompiler extends CallCompiler {
                 case AssignExpression e   -> compileAssignExpr(e);
                 case CallExpression e     -> compileCall(e);
                 case GetExpression e      -> compileGet(e);
+                case SafeGetExpression e  -> compileSafeGet(e);
+                case CoalesceExpression e -> compileCoalesce(e);
                 case SetExpression e      -> compileSet(e);
                 case NewExpression e      -> compileNew(e);
                 case ArrayExpression e    -> compileArray(e);
@@ -89,6 +91,8 @@ public abstract class ExpressionCompiler extends CallCompiler {
             case UnaryExpression e    -> "  op=" + e.operator();
             case LogicalExpression e  -> "  op=" + e.operator();
             case GetExpression e      -> "  field=" + e.field();
+            case SafeGetExpression e  -> "  field=" + e.field();
+            case CoalesceExpression e -> "";
             case CallExpression e     -> "  caller=" + (e.caller() instanceof VarExpression(String name) ? name : e.caller().getClass().getSimpleName()) + "  args=" + e.arguments().size();
             case NewExpression e      -> "  class=" + e.className();
             default -> "";
@@ -300,32 +304,89 @@ public abstract class ExpressionCompiler extends CallCompiler {
     }
 
     protected void compileGet(@NotNull GetExpression e) {
-        String objectType = evaluateExpressionType(e.object());
+        emitGet(e.object(), e.field(), false);
+    }
+
+    /**
+     * Compiles null-safe field access ({@code obj?.field}): {@code nil} when
+     * the receiver is {@code nil}, otherwise identical to {@link #compileGet}.
+     * The receiver is evaluated exactly once; static (const) fields need no
+     * guard since no dereference occurs.
+     */
+    protected void compileSafeGet(@NotNull SafeGetExpression e) {
+        emitGet(e.object(), e.field(), true);
+    }
+
+    /**
+     * Compiles nil-coalescing ({@code left ?? right}) with short-circuiting:
+     * the right side runs only when the left side is {@code nil} (nil is Java
+     * {@code null}, so a plain null check suffices — unlike {@code &&}/{@code ||},
+     * no truthiness conversion is involved).
+     */
+    private void compileCoalesce(@NotNull CoalesceExpression e) {
+        org.objectweb.asm.Label useLeft = new org.objectweb.asm.Label();
+        org.objectweb.asm.Label end     = new org.objectweb.asm.Label();
+        compileExpression(e.left());
+        methodVisitor.visitInsn(DUP);
+        methodVisitor.visitJumpInsn(IFNONNULL, useLeft);
+        methodVisitor.visitInsn(POP);
+        compileExpression(e.right());
+        methodVisitor.visitJumpInsn(GOTO, end);
+        methodVisitor.visitLabel(useLeft);
+        methodVisitor.visitLabel(end);
+    }
+
+    private void emitGet(@NotNull Expression objExpr, @NotNull String field, boolean safe) {
+        String objectType = evaluateExpressionType(objExpr);
+
+        org.objectweb.asm.Label lNil = new org.objectweb.asm.Label();
+        org.objectweb.asm.Label lEnd = new org.objectweb.asm.Label();
 
         if (larvClasses.containsKey(objectType)) {
             ClassStatement cs      = larvClasses.get(objectType);
-            String fieldType       = getFieldType(cs, e.field());
+            String fieldType       = getFieldType(cs, field);
             boolean primitive      = isPrimitive(fieldType);
             String fieldDesc       = primitive ? primitiveDescriptor(fieldType) : JAVA_OBJECT;
-            boolean isStatic       = isConstField(cs, e.field());
+            boolean isStatic       = isConstField(cs, field);
 
             if (isStatic) {
-                methodVisitor.visitFieldInsn(GETSTATIC, objectType, e.field(), fieldDesc);
-            } else {
-                compileExpression(e.object());
-                if (!castIsRedundant(e.object(), objectType)) {
+                // Static consts involve no receiver dereference: identical for `.` and `?.`.
+                methodVisitor.visitFieldInsn(GETSTATIC, objectType, field, fieldDesc);
+                if (primitive) emitBox(fieldType);
+                return;
+            }
+
+            if (!safe) {
+                compileExpression(objExpr);
+                if (!castIsRedundant(objExpr, objectType)) {
                     methodVisitor.visitTypeInsn(CHECKCAST, objectType);
                 }
-                methodVisitor.visitFieldInsn(GETFIELD, objectType, e.field(), fieldDesc);
+                methodVisitor.visitFieldInsn(GETFIELD, objectType, field, fieldDesc);
+                if (primitive) emitBox(fieldType);
+                return;
             }
-            if (primitive) emitBox(fieldType);
-            return;
+            // Safe instance read (`?.`): always use the dynamic map-based
+            // path below.  Compiled `var` fields are stored in the LarvObject
+            // map (writes through `this` go dynamic), so a GETFIELD fast path
+            // can observe a stale/empty JVM slot — the map is the source of
+            // truth.  Plain `.` keeps its existing fast path untouched.
         }
 
-        compileExpression(e.object());
-        methodVisitor.visitLdcInsn(e.field());
+        compileExpression(objExpr);
+        if (safe) {
+            methodVisitor.visitInsn(DUP);
+            methodVisitor.visitJumpInsn(IFNULL, lNil);
+        }
+        methodVisitor.visitLdcInsn(field);
         methodVisitor.visitMethodInsn(INVOKESTATIC, RUNTIME, "getField",
                 "(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/Object;", false);
+        if (safe) {
+            methodVisitor.visitJumpInsn(GOTO, lEnd);
+            methodVisitor.visitLabel(lNil);
+            methodVisitor.visitInsn(POP);
+            methodVisitor.visitInsn(ACONST_NULL);
+            methodVisitor.visitLabel(lEnd);
+        }
     }
 
     protected void compileSet(@NotNull SetExpression e) {
@@ -371,6 +432,15 @@ public abstract class ExpressionCompiler extends CallCompiler {
         }
         methodVisitor.visitMethodInsn(INVOKESTATIC, "java/util/Arrays", "asList",
                 "([Ljava/lang/Object;)Ljava/util/List;", false);
+        // Wrap in a mutable ArrayList: the interpreter builds `[]` as a plain
+        // ArrayList, but Arrays.asList is fixed-size, so methods like push()
+        // would otherwise throw UnsupportedOperationException in compiled code.
+        // Stack: [list] → NEW, DUP_X1, SWAP → [ref, ref, list] → <init> → [ref].
+        methodVisitor.visitTypeInsn(NEW, "java/util/ArrayList");
+        methodVisitor.visitInsn(DUP_X1);
+        methodVisitor.visitInsn(SWAP);
+        methodVisitor.visitMethodInsn(INVOKESPECIAL, "java/util/ArrayList", "<init>",
+                "(Ljava/util/Collection;)V", false);
     }
 
     private void compileIndex(@NotNull IndexExpression e) {

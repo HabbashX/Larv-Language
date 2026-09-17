@@ -13,6 +13,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.invoke.MutableCallSite;
+import java.lang.invoke.WrongMethodTypeException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -989,7 +990,23 @@ public class LarvCompilerRuntime {
 
     @Contract("null,_ -> fail")
     public static Object getField(Object obj, String field) {
-        if (obj instanceof LarvObject lo) return lo.get(field);
+        if (obj instanceof LarvObject lo) {
+            // Consult both stores: statically-typed writes go through PUTFIELD
+            // (JVM slot) while `this`-writes land in the map, so neither store
+            // alone is authoritative.  A non-null JVM value wins (a map entry
+            // can only go stale when a typed write bypassed it); otherwise the
+            // map decides, with an explicit nil staying nil.
+            MethodHandle getter = fieldGetter(obj.getClass(), field);
+            if (getter != null) {
+                try {
+                    Object jvm = getter.invoke(obj);
+                    if (jvm != null) return jvm;
+                } catch (Throwable t) { throw new LarvRuntimeException("Field read failed: " + field, t); }
+            }
+            Object v = lo.get(field);
+            if (v != null) return v;
+            return null;
+        }
         MethodHandle getter = fieldGetter(obj.getClass(), field);
         if (getter != null) {
             try { return getter.invoke(obj); }
@@ -1000,7 +1017,20 @@ public class LarvCompilerRuntime {
 
     @Contract("null,_,_ -> fail")
     public static void setField(Object obj, String field, Object value) {
-        if (obj instanceof LarvObject lo) { lo.set(field, value); return; }
+        if (obj instanceof LarvObject lo) {
+            lo.set(field, value);
+            // Write-through to a compiled JVM field when one exists, so the
+            // GETFIELD fast path and the map never diverge (best-effort: an
+            // incompatible value, e.g. a Double for an int slot, or nil for a
+            // primitive slot, keeps the map copy only).
+            MethodHandle setter = fieldSetter(obj.getClass(), field);
+            if (setter != null) {
+                try { setter.invoke(obj, value); }
+                catch (WrongMethodTypeException | ClassCastException | NullPointerException ignored) { }
+                catch (Throwable t) { throw new LarvRuntimeException("Field write failed: " + field, t); }
+            }
+            return;
+        }
         MethodHandle setter = fieldSetter(obj.getClass(), field);
         if (setter != null) {
             try { setter.invoke(obj, value); return; }

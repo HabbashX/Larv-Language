@@ -71,7 +71,13 @@ public class Lexer {
             case '!' -> { if (match('=')) addToken(TokenType.NOTEQ); else addToken(TokenType.BANG); }
             case '&' -> { if (match('&')) addToken(TokenType.AND);   else throw new LarvError("Unexpected character '&' — did you mean '&&'?", line, col(), LarvError.Kind.LEXER); }
             case '|' -> { if (match('|')) addToken(TokenType.OR);    else throw new LarvError("Unexpected character '|' — did you mean '||'?", line, col(), LarvError.Kind.LEXER); }
-            case '?' -> addToken(TokenType.QUESTION);
+            case '?' -> {
+                // `?.` (safe navigation) and `??` (nil-coalescing) combine only
+                // when directly adjacent — `a ? b, c` ternaries are unaffected.
+                if (match('.'))      addToken(TokenType.QUESTION_DOT);
+                else if (match('?')) addToken(TokenType.QUESTION_QUESTION);
+                else                 addToken(TokenType.QUESTION);
+            }
             case '^' -> addToken(TokenType.CARET);
             case '<' -> { if (match('=')) addToken(TokenType.LTE); else addToken(TokenType.LT); }
             case '>' -> { if (match('=')) addToken(TokenType.GTE); else addToken(TokenType.GT); }

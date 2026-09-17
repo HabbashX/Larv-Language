@@ -98,6 +98,8 @@ public enum TokenType {
     OR,
     BANG,
     QUESTION,
+    QUESTION_DOT,
+    QUESTION_QUESTION,
     DEFER,
     ARROW,
     CARET,
